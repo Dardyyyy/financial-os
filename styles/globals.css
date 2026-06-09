@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #__next { height: 100%; }
+body {
+  background: radial-gradient(1200px 600px at 80% -10%, rgba(34,211,238,0.06), transparent),
+              radial-gradient(900px 500px at 0% 0%, rgba(59,130,246,0.07), transparent),
+              #0a0e17;
+  color: #e6ebf5;
+}
+* { -webkit-tap-highlight-color: transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #243049; border-radius: 8px; }
+.card { background: #121826; border: 1px solid #243049; border-radius: 16px; }
+.input {
+  background: #0f1524; border: 1px solid #243049; border-radius: 10px;
+  padding: 10px 12px; color: #e6ebf5; width: 100%; outline: none;
+}
+.input:focus { border-color: #3b82f6; }
+.btn {
+  background: #3b82f6; color: white; border-radius: 10px; padding: 10px 16px;
+  font-weight: 600; transition: .15s; border: none; cursor: pointer;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-ghost { background: transparent; border: 1px solid #243049; color: #e6ebf5; }
+.chip { border: 1px solid #243049; border-radius: 999px; padding: 6px 12px; font-size: 13px; }
