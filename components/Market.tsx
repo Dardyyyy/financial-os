@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { loadWatchlist, saveWatchlist, getUsdEur, usd, eur, uid } from "../lib/store";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { loadWatchlist, saveWatchlist, getUsdEur, usd, eur, eur2 } from "../lib/store";
 
 type Quote = { price: number; change: number };
+type CatId = "stock" | "etf" | "crypto" | "custom";
+
+const CATS: { id: CatId; label: string; icon: string; rate: number; color: string; note: string }[] = [
+  { id: "stock", label: "Einzelaktie", icon: "📈", rate: 9, color: "#F5B544", note: "Live-Kurs aus deiner Watchlist" },
+  { id: "etf", label: "ETF / Index", icon: "🧺", rate: 7, color: "#5EEAD4", note: "z.B. MSCI World, breit gestreut" },
+  { id: "crypto", label: "Krypto", icon: "🪙", rate: 15, color: "#A78BFA", note: "hohe Chance, hohes Risiko" },
+  { id: "custom", label: "Eigene", icon: "✏️", rate: 8, color: "#60A5FA", note: "freie Annahme" },
+];
 
 export default function Market() {
   const [watch, setWatch] = useState<string[]>([]);
@@ -12,10 +21,13 @@ export default function Market() {
   const [newT, setNewT] = useState("");
 
   // Rechner
+  const [cat, setCat] = useState<CatId>("etf");
+  const [mode, setMode] = useState<"once" | "monthly" | "both">("both");
+  const [start, setStart] = useState(5000);
+  const [monthly, setMonthly] = useState(300);
+  const [years, setYears] = useState(15);
+  const [rate, setRate] = useState(7);
   const [sym, setSym] = useState("");
-  const [amount, setAmount] = useState("1000");
-  const [years, setYears] = useState(10);
-  const [rate, setRate] = useState(8);
 
   const fetchQuotes = async (list: string[]) => {
     if (!list.length) { setQuotes({}); return; }
@@ -26,8 +38,7 @@ export default function Market() {
       const q: Record<string, Quote> = {};
       list.forEach(s => { if (r.prices?.[s] != null) q[s] = { price: r.prices[s], change: r.changes?.[s] ?? 0 }; });
       setQuotes(q);
-    } catch { setWarn("Konnte Kurse nicht laden."); }
-    finally { setLoading(false); }
+    } catch { setWarn("Konnte Kurse nicht laden."); } finally { setLoading(false); }
   };
 
   useEffect(() => {
@@ -36,138 +47,160 @@ export default function Market() {
   }, []);
 
   const movers = useMemo(() =>
-    watch.map(s => ({ sym: s, ...(quotes[s] || { price: 0, change: 0 }) }))
-      .filter(m => m.price > 0)
-      .sort((a, b) => b.change - a.change), [watch, quotes]);
-
+    watch.map(s => ({ sym: s, ...(quotes[s] || { price: 0, change: 0 }) })).filter(m => m.price > 0).sort((a, b) => b.change - a.change),
+    [watch, quotes]);
   const topGainer = movers[0];
   const topLoser = movers[movers.length - 1];
 
-  const addTicker = () => {
-    const t = newT.toUpperCase().trim();
-    if (!t || watch.includes(t)) { setNewT(""); return; }
-    const next = [...watch, t]; setWatch(next); saveWatchlist(next); setNewT("");
-    fetchQuotes(next);
-  };
-  const removeTicker = (t: string) => {
-    const next = watch.filter(x => x !== t); setWatch(next); saveWatchlist(next);
-    if (sym === t) setSym(next[0] || "");
-  };
+  const pickCat = (c: CatId) => { setCat(c); setRate(CATS.find(x => x.id === c)!.rate); };
+  const addTicker = () => { const t = newT.toUpperCase().trim(); if (!t || watch.includes(t)) { setNewT(""); return; } const n = [...watch, t]; setWatch(n); saveWatchlist(n); setNewT(""); fetchQuotes(n); };
+  const removeTicker = (t: string) => { const n = watch.filter(x => x !== t); setWatch(n); saveWatchlist(n); if (sym === t) setSym(n[0] || ""); };
 
-  // Rechner-Ergebnis
-  const priceUsd = quotes[sym]?.price || 0;
-  const priceEur = priceUsd * fx;
-  const amt = parseFloat(amount.replace(",", ".")) || 0;
-  const sharesNow = priceEur > 0 ? amt / priceEur : 0;
-  const future = amt * Math.pow(1 + rate / 100, years);
+  // Projektion
+  const proj = useMemo(() => {
+    const s0 = mode === "monthly" ? 0 : start;
+    const mRate = mode === "once" ? 0 : monthly;
+    const r = rate / 100 / 12;
+    const pts: { year: number; eingezahlt: number; wert: number }[] = [{ year: 0, eingezahlt: Math.round(s0), wert: Math.round(s0) }];
+    let v = s0, contrib = s0;
+    for (let mo = 1; mo <= years * 12; mo++) { v = v * (1 + r) + mRate; contrib += mRate; if (mo % 12 === 0) pts.push({ year: mo / 12, eingezahlt: Math.round(contrib), wert: Math.round(v) }); }
+    return pts;
+  }, [mode, start, monthly, years, rate]);
+  const fin = proj[proj.length - 1];
+  const invested = fin.eingezahlt, endValue = fin.wert, gain = endValue - invested;
+
+  const priceEur = (quotes[sym]?.price || 0) * fx;
+  const sharesNow = cat === "stock" && priceEur > 0 ? (mode === "monthly" ? 0 : start) / priceEur : 0;
+  const catObj = CATS.find(c => c.id === cat)!;
 
   return (
     <div className="space-y-5">
+      {/* ===== Top Mover ===== */}
       <div className="flex items-center gap-3 flex-wrap">
         <button className="btn" onClick={() => fetchQuotes(watch)} disabled={loading}>{loading ? "Lädt…" : "↻ Kurse aktualisieren"}</button>
-        <span className="text-xs text-muted">Tagesveränderung aus deiner Watchlist · Kurse in USD</span>
+        <span className="text-xs text-muted">Tagesbewegung deiner Watchlist · Kurse in USD</span>
       </div>
 
-      {warn && <div className="card p-4 text-sm text-bad/90 border border-bad/30">⚠ {warn} Bis dahin bleibt diese Ansicht leer — ich zeige bewusst keine erfundenen Zahlen.</div>}
+      {warn && <div className="card p-4 text-sm text-muted border border-bad/30">⚠ {warn}</div>}
 
-      {/* Top Mover Highlights */}
       {movers.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="card card-hl p-5">
             <div className="text-xs uppercase tracking-widest text-mint mb-1">Top Gainer heute</div>
-            <div className="flex items-baseline justify-between">
-              <span className="display text-2xl font-bold">{topGainer.sym}</span>
-              <span className="num text-mint text-lg">▲ {topGainer.change.toFixed(2)}%</span>
-            </div>
+            <div className="flex items-baseline justify-between"><span className="display text-2xl font-bold">{topGainer.sym}</span><span className="num text-mint text-lg">▲ {topGainer.change.toFixed(2)}%</span></div>
             <div className="num text-muted text-sm mt-1">{usd(topGainer.price)}</div>
           </div>
           <div className="card p-5">
             <div className="text-xs uppercase tracking-widest text-bad mb-1">Größter Verlierer heute</div>
-            <div className="flex items-baseline justify-between">
-              <span className="display text-2xl font-bold">{topLoser.sym}</span>
-              <span className={`num text-lg ${topLoser.change >= 0 ? "text-mint" : "text-bad"}`}>{topLoser.change >= 0 ? "▲" : "▼"} {Math.abs(topLoser.change).toFixed(2)}%</span>
-            </div>
+            <div className="flex items-baseline justify-between"><span className="display text-2xl font-bold">{topLoser.sym}</span><span className={`num text-lg ${topLoser.change >= 0 ? "text-mint" : "text-bad"}`}>{topLoser.change >= 0 ? "▲" : "▼"} {Math.abs(topLoser.change).toFixed(2)}%</span></div>
             <div className="num text-muted text-sm mt-1">{usd(topLoser.price)}</div>
           </div>
         </div>
       )}
 
-      {/* Watchlist */}
-      <div className="card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="font-semibold display">Watchlist · nach Tagesbewegung</div>
-          <span className="text-xs text-muted">{movers.length} Werte mit Live-Daten</span>
+      {movers.length > 0 && (
+        <div className="card p-6">
+          <div className="font-semibold display mb-4">Watchlist · nach Tagesbewegung</div>
+          <div className="space-y-2">
+            {movers.map((m, i) => (
+              <div key={m.sym} className="flex items-center justify-between py-2 border-b border-line/40">
+                <div className="flex items-center gap-3"><span className="num text-xs text-muted w-5">{i + 1}</span><span className="font-semibold w-16">{m.sym}</span></div>
+                <div className="flex items-center gap-5">
+                  <span className="num text-sm text-muted">{usd(m.price)}</span>
+                  <span className={`num text-sm w-20 text-right ${m.change >= 0 ? "text-mint" : "text-bad"}`}>{m.change >= 0 ? "▲" : "▼"} {Math.abs(m.change).toFixed(2)}%</span>
+                  <button onClick={() => removeTicker(m.sym)} className="text-muted hover:text-bad">✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-4">
+            <input className="input" placeholder="Ticker hinzufügen (z.B. SMCI)" value={newT} onChange={e => setNewT(e.target.value)} onKeyDown={e => e.key === "Enter" && addTicker()} />
+            <button className="btn-ghost px-4 rounded-xl" onClick={addTicker}>+ Hinzufügen</button>
+          </div>
         </div>
-        <div className="space-y-2">
-          {movers.map((m, i) => (
-            <div key={m.sym} className="flex items-center justify-between py-2 border-b border-line/40 group">
-              <div className="flex items-center gap-3">
-                <span className="num text-xs text-muted w-5">{i + 1}</span>
-                <span className="font-semibold w-16">{m.sym}</span>
-              </div>
-              <div className="flex items-center gap-5">
-                <span className="num text-sm text-muted">{usd(m.price)}</span>
-                <span className={`num text-sm w-20 text-right ${m.change >= 0 ? "text-mint" : "text-bad"}`}>{m.change >= 0 ? "▲" : "▼"} {Math.abs(m.change).toFixed(2)}%</span>
-                <button onClick={() => removeTicker(m.sym)} className="text-muted hover:text-bad transition">✕</button>
-              </div>
-            </div>
+      )}
+
+      {/* ===== Investitions-Rechner ===== */}
+      <div className="card card-hl p-6 space-y-6">
+        <div>
+          <div className="display text-lg font-semibold">Investitions-Rechner</div>
+          <div className="text-xs text-muted mt-1">Was wird aus deinem Geld? Wähle eine Anlageform und spiel mit den Reglern.</div>
+        </div>
+
+        {/* Kategorie-Auswahl */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {CATS.map(c => (
+            <button key={c.id} onClick={() => pickCat(c.id)}
+              className="rounded-2xl p-4 text-left border transition"
+              style={cat === c.id ? { borderColor: c.color, background: `${c.color}14` } : { borderColor: "#26314D", background: "transparent" }}>
+              <div className="text-2xl mb-1">{c.icon}</div>
+              <div className="font-semibold text-sm" style={cat === c.id ? { color: c.color } : {}}>{c.label}</div>
+              <div className="text-[11px] text-muted mt-0.5 leading-tight">{c.note}</div>
+            </button>
           ))}
-          {!loading && movers.length === 0 && !warn && <div className="text-muted text-sm py-3">Keine Live-Daten. Auf „Kurse aktualisieren" tippen.</div>}
-        </div>
-        <div className="flex gap-2 mt-4">
-          <input className="input" placeholder="Ticker hinzufügen (z.B. SMCI)" value={newT} onChange={e => setNewT(e.target.value)} onKeyDown={e => e.key === "Enter" && addTicker()} />
-          <button className="btn-ghost px-4 rounded-xl" onClick={addTicker}>+ Hinzufügen</button>
-        </div>
-      </div>
-
-      {/* Investitions-Rechner */}
-      <div className="card card-hl p-6">
-        <div className="font-semibold display mb-4">Investitions-Rechner</div>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
-          <div>
-            <div className="text-xs text-muted mb-1">Wert</div>
-            <select className="input" value={sym} onChange={e => setSym(e.target.value)}>
-              {watch.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <div className="text-xs text-muted mb-1">Betrag (EUR)</div>
-            <input className="input num" value={amount} onChange={e => setAmount(e.target.value)} />
-          </div>
-          <div>
-            <div className="text-xs text-muted mb-1">Laufzeit (Jahre)</div>
-            <input className="input num" type="number" value={years} onChange={e => setYears(+e.target.value || 0)} />
-          </div>
-          <div>
-            <div className="text-xs text-muted mb-1">Rendite p.a. (%)</div>
-            <input className="input num" type="number" value={rate} onChange={e => setRate(+e.target.value || 0)} />
-          </div>
         </div>
 
-        {priceUsd > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Stat label={`Live-Kurs ${sym}`} val={`${usd(priceUsd)}`} sub={`≈ ${eur(priceEur)}`} tone="muted" />
-            <Stat label="Stück für deinen Betrag" val={sharesNow.toFixed(2)} sub={`bei ${eur(priceEur)} / Stück`} tone="gold" />
-            <Stat label={`Wert in ${years} J. @ ${rate}%`} val={eur(future)} sub={`aus ${eur(amt)} (Modellrechnung)`} tone="mint" />
+        {/* Aktie waehlen (nur Kategorie Einzelaktie) */}
+        {cat === "stock" && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-muted">Wert:</span>
+            <select className="input max-w-[160px]" value={sym} onChange={e => setSym(e.target.value)}>{watch.map(s => <option key={s} value={s}>{s}</option>)}</select>
+            {priceEur > 0
+              ? <span className="text-sm num">Live: {usd(quotes[sym].price)} <span className="text-muted">≈ {eur2(priceEur)}</span></span>
+              : <span className="text-xs text-muted">Kein Live-Kurs — „↻ Kurse aktualisieren" / Finnhub-Key prüfen.</span>}
           </div>
-        ) : (
-          <div className="text-muted text-sm">Wähle einen Wert mit Live-Kurs (oben „Kurse aktualisieren").</div>
         )}
-        <div className="text-xs text-muted mt-4">
-          Stückzahl auf Basis des echten Live-Kurses (USD → EUR @ {fx.toFixed(3)}). Die Projektion ist eine reine Zinseszins-Modellrechnung mit deiner angenommenen Rendite — keine Vorhersage und keine Anlageberatung.
+
+        {/* Anlageart */}
+        <div className="flex gap-2">
+          {([["both", "Start + Sparplan"], ["once", "Einmalanlage"], ["monthly", "Nur Sparplan"]] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setMode(id)} className="chip" style={mode === id ? { borderColor: catObj.color, color: "#fff", background: `${catObj.color}18` } : {}}>{label}</button>
+          ))}
         </div>
+
+        {/* Slider */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
+          {mode !== "monthly" && <Slider label="Startbetrag" val={eur(start)}><input type="range" min={0} max={100000} step={500} value={start} onChange={e => setStart(+e.target.value)} className="w-full accent-gold" /></Slider>}
+          {mode !== "once" && <Slider label="Monatliche Rate" val={eur(monthly)}><input type="range" min={0} max={3000} step={25} value={monthly} onChange={e => setMonthly(+e.target.value)} className="w-full accent-gold" /></Slider>}
+          <Slider label="Laufzeit" val={`${years} Jahre`}><input type="range" min={1} max={40} step={1} value={years} onChange={e => setYears(+e.target.value)} className="w-full accent-gold" /></Slider>
+          <Slider label="Erwartete Rendite p.a." val={`${rate}%`}><input type="range" min={0} max={20} step={0.5} value={rate} onChange={e => setRate(+e.target.value)} className="w-full accent-gold" /></Slider>
+        </div>
+
+        {/* Ergebnis-Karten */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Stat label="Endwert" val={eur(endValue)} tone="gold" />
+          <Stat label="Eingezahlt" val={eur(invested)} tone="muted" />
+          <Stat label="Gewinn" val={eur(gain)} tone="mint" />
+          <Stat label={cat === "stock" ? `Stück ${sym}` : "Faktor"} val={cat === "stock" ? sharesNow.toFixed(2) : `${(invested > 0 ? endValue / invested : 0).toFixed(1)}×`} tone="default" />
+        </div>
+
+        {/* Chart */}
+        <div style={{ width: "100%", height: 280 }}>
+          <ResponsiveContainer>
+            <AreaChart data={proj} margin={{ top: 4, right: 4, left: -14, bottom: 0 }}>
+              <defs>
+                <linearGradient id="mWert" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={catObj.color} stopOpacity={0.45} /><stop offset="100%" stopColor={catObj.color} stopOpacity={0} /></linearGradient>
+                <linearGradient id="mEin" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8794B0" stopOpacity={0.22} /><stop offset="100%" stopColor="#8794B0" stopOpacity={0} /></linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1f2a44" vertical={false} />
+              <XAxis dataKey="year" tick={{ fill: "#8794B0", fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(y) => `${y}J`} />
+              <YAxis tick={{ fill: "#8794B0", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+              <Tooltip contentStyle={{ background: "#0C1322", border: `1px solid ${catObj.color}`, borderRadius: 12 }} labelStyle={{ color: catObj.color }} itemStyle={{ color: "#fff", fontFamily: "var(--font-mono)" }} formatter={(v, n) => [eur2(Number(v)), n === "wert" ? "Wert" : "Eingezahlt"]} labelFormatter={(l) => `Jahr ${l}`} />
+              <Area type="monotone" dataKey="eingezahlt" stroke="#8794B0" fill="url(#mEin)" strokeWidth={1.5} />
+              <Area type="monotone" dataKey="wert" stroke={catObj.color} fill="url(#mWert)" strokeWidth={2.5} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="text-xs text-muted">Zinseszins-Modellrechnung mit deiner angenommenen Rendite — keine Vorhersage, keine Anlageberatung. {cat === "stock" && "Stückzahl auf Basis des Live-Kurses (USD→EUR)."}</div>
       </div>
     </div>
   );
 }
 
-function Stat({ label, val, sub, tone }: { label: string; val: string; sub: string; tone: "gold" | "mint" | "muted" }) {
-  const color = tone === "gold" ? "text-gold" : tone === "mint" ? "text-mint" : "text-ink2";
-  return (
-    <div className="bg-panel2/60 border border-line/50 rounded-xl p-4">
-      <div className="text-xs text-muted">{label}</div>
-      <div className={`display text-xl font-bold mt-1 num ${color}`}>{val}</div>
-      <div className="text-xs text-muted mt-1">{sub}</div>
-    </div>
-  );
+function Slider({ label, val, children }: { label: string; val: string; children: ReactNode }) {
+  return (<div><div className="flex justify-between text-sm mb-2"><span className="text-muted">{label}</span><span className="num text-ink2 font-semibold">{val}</span></div>{children}</div>);
+}
+function Stat({ label, val, tone }: { label: string; val: string; tone: "gold" | "mint" | "muted" | "default" }) {
+  const color = tone === "gold" ? "text-gold" : tone === "mint" ? "text-mint" : tone === "muted" ? "text-muted" : "text-ink2";
+  return (<div className="bg-panel2/60 border border-line/50 rounded-xl p-4"><div className="text-xs text-muted">{label}</div><div className={`display text-xl font-bold mt-1 num ${color}`}>{val}</div></div>);
 }
