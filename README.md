@@ -1,45 +1,38 @@
 # Financial OS
 
-Persönliches Finanz-Cockpit als Next.js App. Dashboard, Investment-Planer,
-KI-Expert-Advisor (Anthropic Claude) und Portfolio-Tracker — sofort auf Vercel deploybar.
+Persönliches Finanz-Cockpit als Next.js App: Übersicht, Investment-Planer,
+KI-Berater (Anthropic Claude), Portfolio mit Live-Kursen. Cloud-Sync via Firebase
+(optional) — sofort auf Vercel deploybar.
 
 ## Stack
 - Next.js 14 (Pages Router) + TypeScript
-- Tailwind CSS
-- Recharts (Charts)
-- Anthropic Claude API (server-seitig über `/api/chat`)
+- Tailwind CSS · Space Grotesk / Inter / JetBrains Mono (next/font)
+- Recharts
+- Anthropic Claude API (server-seitig, `/api/chat`)
+- Marktdaten: Finnhub (Aktien) + CoinGecko (Krypto), `/api/quote`
+- Firebase Firestore (optional, mit localStorage-Fallback)
 
-## Environment Variables
-| Variable | Pflicht | Beschreibung |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | ✅ | Key für den Expert Advisor Chat |
-| `ANTHROPIC_MODEL` | – | Default `claude-sonnet-4-6` |
-| `NEXT_PUBLIC_AIRTABLE_BASE_ID` | – | Phase 2 |
-| `NEXT_PUBLIC_AIRTABLE_TOKEN` | – | Phase 2 |
-
-## Struktur
+## Architektur
 ```
 financial-os/
 ├── pages/
-│   ├── _app.tsx
-│   ├── index.tsx          # Tab-Navigation
-│   └── api/chat.ts        # Claude-Proxy (Key bleibt server-seitig)
+│   ├── _app.tsx                # Fonts + Layout
+│   ├── index.tsx               # App-Shell (Sidebar + Bottom-Nav + Ticker)
+│   └── api/
+│       ├── chat.ts             # Claude-Proxy
+│       └── quote.ts            # Live-Kurse (Finnhub/CoinGecko)
 ├── components/
-│   ├── Dashboard.tsx
-│   ├── InvestmentPlanner.tsx
-│   ├── ExpertAdvisor.tsx
-│   └── Portfolio.tsx
-├── lib/store.ts           # localStorage + Seed-Daten
-├── styles/globals.css
-├── .env.example
-└── ...config
+│   ├── Dashboard.tsx · InvestmentPlanner.tsx · ExpertAdvisor.tsx · Portfolio.tsx
+│   ├── Ticker.tsx              # laufender Kurs-Ticker
+│   └── CountUp.tsx             # animierte Zahlen
+├── lib/
+│   ├── firebase.ts             # Firebase-Init (no-config → aus)
+│   └── store.ts                # Hybrid-Speicher Firestore/localStorage
+└── styles/globals.css
 ```
 
-## Lokal starten
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
-```
+## Speicher
+Ohne Firebase-Variablen: alle Daten lokal im Browser (localStorage).
+Mit Firebase-Variablen: Daten in Firestore (`financial-os/transactions`, `financial-os/holdings`).
 
-Keine Anlageberatung — reine Informations- und Planungs-Tools.
+Keine Anlageberatung — Informations- und Planungs-Tools.
