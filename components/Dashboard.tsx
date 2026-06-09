@@ -8,9 +8,16 @@ export default function Dashboard() {
   const [txs, setTxs] = useState<Tx[]>([]);
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("Essen");
+  const [category, setCategory] = useState("");
+  const [txType, setTxType] = useState<"expense" | "income">("expense");
 
   useEffect(() => { setTxs(loadTransactions()); }, []);
+
+  // Vorschläge = Standard-Kategorien + alle bereits benutzten (wächst automatisch)
+  const categorySuggestions = useMemo(() => {
+    const defaults = ["Einkommen", "Wohnen", "Essen", "Freizeit", "Investment", "Sonstiges"];
+    return Array.from(new Set([...defaults, ...txs.map(t => t.category)]));
+  }, [txs]);
 
   const income = useMemo(() => txs.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0), [txs]);
   const expense = useMemo(() => txs.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0), [txs]);
@@ -28,16 +35,16 @@ export default function Dashboard() {
 
   const addTx = () => {
     const raw = parseFloat(amount.replace(",", "."));
+    const cat = category.trim() || "Sonstiges";
     if (!desc.trim() || isNaN(raw)) return;
-    // Vorzeichen kommt aus der Kategorie: Einkommen = Einnahme (+), sonst Ausgabe (-)
     const magnitude = Math.abs(raw);
-    const signed = category === "Einkommen" ? magnitude : -magnitude;
+    const signed = txType === "income" ? magnitude : -magnitude;
     const next = [
-      { id: uid(), date: new Date().toISOString().slice(0, 10), desc: desc.trim(), category, amount: signed },
+      { id: uid(), date: new Date().toISOString().slice(0, 10), desc: desc.trim(), category: cat, amount: signed },
       ...txs,
     ];
     setTxs(next); saveTransactions(next);
-    setDesc(""); setAmount("");
+    setDesc(""); setAmount(""); setCategory("");
   };
 
   const removeTx = (id: string) => {
@@ -79,17 +86,41 @@ export default function Dashboard() {
       {/* Add transaction */}
       <div className="card p-5">
         <div className="font-semibold mb-4">Transaktion hinzufügen</div>
-        <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_auto] gap-3">
+
+        {/* Ausgabe / Einnahme Schalter */}
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={() => setTxType("expense")}
+            className={`chip ${txType === "expense" ? "bg-bad/15 border-bad text-white" : "text-muted"}`}
+          >
+            − Ausgabe
+          </button>
+          <button
+            onClick={() => setTxType("income")}
+            className={`chip ${txType === "income" ? "bg-good/15 border-good text-white" : "text-muted"}`}
+          >
+            + Einnahme
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1.4fr_auto] gap-3">
           <input className="input" placeholder="Beschreibung" value={desc} onChange={e => setDesc(e.target.value)} />
           <input className="input" placeholder="Betrag (z.B. 1000)" value={amount} onChange={e => setAmount(e.target.value)} />
-          <select className="input" value={category} onChange={e => setCategory(e.target.value)}>
-            {["Einkommen", "Wohnen", "Essen", "Freizeit", "Investment", "Sonstiges"].map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <input
+            className="input"
+            placeholder="Kategorie (frei wählbar)"
+            list="cat-list"
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+          />
+          <datalist id="cat-list">
+            {categorySuggestions.map(c => <option key={c} value={c} />)}
+          </datalist>
           <button className="btn" onClick={addTx}>Hinzufügen</button>
         </div>
-        <div className="text-xs text-muted mt-2">Betrag einfach positiv eingeben. Kategorie „Einkommen" = Einnahme, alle anderen = Ausgabe.</div>
+        <div className="text-xs text-muted mt-2">
+          Oben Ausgabe oder Einnahme wählen, Betrag positiv eingeben. Kategorie kannst du frei tippen — bekannte werden vorgeschlagen.
+        </div>
       </div>
 
       {/* Transactions */}
