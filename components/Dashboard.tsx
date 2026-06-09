@@ -27,10 +27,13 @@ export default function Dashboard() {
   const palette = ["#3b82f6", "#22d3ee", "#34d399", "#f59e0b", "#f87171", "#a78bfa"];
 
   const addTx = () => {
-    const val = parseFloat(amount.replace(",", "."));
-    if (!desc.trim() || isNaN(val)) return;
+    const raw = parseFloat(amount.replace(",", "."));
+    if (!desc.trim() || isNaN(raw)) return;
+    // Vorzeichen kommt aus der Kategorie: Einkommen = Einnahme (+), sonst Ausgabe (-)
+    const magnitude = Math.abs(raw);
+    const signed = category === "Einkommen" ? magnitude : -magnitude;
     const next = [
-      { id: uid(), date: new Date().toISOString().slice(0, 10), desc: desc.trim(), category, amount: val },
+      { id: uid(), date: new Date().toISOString().slice(0, 10), desc: desc.trim(), category, amount: signed },
       ...txs,
     ];
     setTxs(next); saveTransactions(next);
@@ -78,7 +81,7 @@ export default function Dashboard() {
         <div className="font-semibold mb-4">Transaktion hinzufügen</div>
         <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_auto] gap-3">
           <input className="input" placeholder="Beschreibung" value={desc} onChange={e => setDesc(e.target.value)} />
-          <input className="input" placeholder="Betrag (z.B. -50)" value={amount} onChange={e => setAmount(e.target.value)} />
+          <input className="input" placeholder="Betrag (z.B. 1000)" value={amount} onChange={e => setAmount(e.target.value)} />
           <select className="input" value={category} onChange={e => setCategory(e.target.value)}>
             {["Einkommen", "Wohnen", "Essen", "Freizeit", "Investment", "Sonstiges"].map(c => (
               <option key={c} value={c}>{c}</option>
@@ -86,7 +89,7 @@ export default function Dashboard() {
           </select>
           <button className="btn" onClick={addTx}>Hinzufügen</button>
         </div>
-        <div className="text-xs text-muted mt-2">Tipp: positiver Betrag = Einnahme, negativer = Ausgabe.</div>
+        <div className="text-xs text-muted mt-2">Betrag einfach positiv eingeben. Kategorie „Einkommen" = Einnahme, alle anderen = Ausgabe.</div>
       </div>
 
       {/* Transactions */}
