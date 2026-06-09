@@ -122,7 +122,7 @@ export default function Dashboard() {
                   <div className={`num font-semibold ${t.amount >= 0 ? "text-mint" : "text-ink2"}`}>{t.amount >= 0 ? "+" : ""}{money(t.amount, t.currency)}</div>
                   {t.currency !== "EUR" && <div className="num text-[11px] text-muted">≈ {eur2(t.amount * (fxMap[t.currency] ?? 1))}</div>}
                 </div>
-                <button onClick={() => removeTx(t.id)} className="text-muted hover:text-bad text-sm opacity-0 group-hover:opacity-100 transition">✕</button>
+                <button onClick={() => removeTx(t.id)} className="text-muted hover:text-bad text-sm transition">✕</button>
               </div>
             </div>
           ))}

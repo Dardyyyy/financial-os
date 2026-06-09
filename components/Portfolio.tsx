@@ -16,6 +16,7 @@ export default function Portfolio() {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<{ symbol: string; name: string }[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchMsg, setSearchMsg] = useState("");
   // Auswahl + Eingaben
   const [picked, setPicked] = useState<{ ticker: string; name: string } | null>(null);
   const [shares, setShares] = useState("");
@@ -46,9 +47,15 @@ export default function Portfolio() {
 
   const doSearch = async () => {
     if (!q.trim()) return;
-    setSearching(true);
-    try { const r = await fetch(`/api/search?q=${encodeURIComponent(q.trim())}`).then(x => x.json()); setResults(r.results || []); }
-    catch { setResults([]); } finally { setSearching(false); }
+    setSearching(true); setSearchMsg("");
+    try {
+      const r = await fetch(`/api/search?q=${encodeURIComponent(q.trim())}`).then(x => x.json());
+      const list = r.results || [];
+      setResults(list);
+      if (r.warning) setSearchMsg(r.warning);
+      else if (list.length === 0) setSearchMsg(`Keine Treffer für \u201E${q.trim()}\u201C.`);
+    } catch { setResults([]); setSearchMsg("Suche nicht erreichbar \u2014 ist die neue Version deployed?"); }
+    finally { setSearching(false); }
   };
 
   const refreshPrices = async () => {
@@ -117,7 +124,7 @@ export default function Portfolio() {
                 <div className="flex items-center gap-3">
                   <input className="input num w-24 text-right py-1.5" defaultValue={r.lastPrice} onBlur={e => updatePrice(r.id, parseFloat(e.target.value.replace(",", ".")) || r.lastPrice)} />
                   <div className="text-right w-28"><div className="num font-medium">{eur(r.valueEur)}</div><div className={`num text-xs ${r.pl >= 0 ? "text-mint" : "text-bad"}`}>{r.pl >= 0 ? "+" : ""}{r.plPct.toFixed(1)}%</div></div>
-                  <button onClick={() => remove(r.id)} className="text-muted hover:text-bad opacity-0 group-hover:opacity-100 transition">✕</button>
+                  <button onClick={() => remove(r.id)} className="text-muted hover:text-bad transition">✕</button>
                 </div>
               </div>
             ))}
@@ -139,6 +146,7 @@ export default function Portfolio() {
                       <input className="input" placeholder="Name oder Ticker suchen (z.B. Nvidia)" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()} />
                       <button className="btn-ghost px-4 rounded-xl" onClick={doSearch} disabled={searching}>{searching ? "…" : "Suchen"}</button>
                     </div>
+                    {searchMsg && <div className="text-xs text-muted">{searchMsg}</div>}
                     {results.length > 0 && (
                       <div className="border border-line rounded-xl divide-y divide-line/50 max-h-56 overflow-y-auto">
                         {results.map(r => (

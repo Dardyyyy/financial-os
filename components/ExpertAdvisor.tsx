@@ -1,25 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Msg, SavedNote, loadChats, saveChats, loadNotes, saveNotes,
+  Msg, SavedNote, ChatSession, loadChats, saveChats, loadNotes, saveNotes,
   loadTransactions, loadHoldings, uid, eur,
 } from "../lib/store";
 
 const MODES = {
   investment: { label: "Investment", icon: "📈", color: "#F5B544",
-    system: "Du bist ein nüchterner Investment-Analyst mit Fokus auf KI-Infrastruktur und Energie. Antworte auf Deutsch, strukturiert und konkret. Nenne Chancen UND Risiken (Bull/Bear). Keine personalisierte Anlageberatung; Entscheidungen liegen beim Nutzer." },
+    system: "Du bist ein nüchterner Investment-Analyst mit Fokus auf KI-Infrastruktur und Energie. Antworte auf Deutsch, strukturiert und konkret. Nenne Chancen UND Risiken. Keine personalisierte Anlageberatung." },
   debt: { label: "Schulden", icon: "💳", color: "#FB7185",
-    system: "Du bist ein empathischer Schuldenberater. Antworte auf Deutsch. Priorisiere Schulden (Lawine vs. Schneeball), erstelle realistische Abbaupläne, erkläre Optionen sachlich." },
+    system: "Du bist ein empathischer Schuldenberater. Antworte auf Deutsch. Priorisiere Schulden (Lawine vs. Schneeball), erstelle realistische Abbaupläne." },
   tax: { label: "Steuer", icon: "🧾", color: "#5EEAD4",
-    system: "Du bist ein Steuer-Erklärer für Privatpersonen. Antworte auf Deutsch, verständlich und mit konkretem Bezug zur Gesetzeslage des angegebenen Landes (Deutschland ODER Schweiz). Beachte Unterschiede z.B. bei Kapitalertragsteuer/Verrechnungssteuer, Freibeträgen und Fristen. Du ersetzt keinen Steuerberater und sagst das auch." },
+    system: "Du bist ein Steuer-Erklärer für Privatpersonen. Antworte auf Deutsch mit konkretem Bezug zur Gesetzeslage des angegebenen Landes (Deutschland ODER Schweiz). Beachte Unterschiede bei Kapitalertrag-/Verrechnungssteuer, Freibeträgen, Fristen. Du ersetzt keinen Steuerberater." },
   budget: { label: "Budget", icon: "📊", color: "#A78BFA",
-    system: "Du bist ein praktischer Budget-Coach. Antworte auf Deutsch. Gib konkrete, umsetzbare Tipps zu Sparquoten, 50/30/20 und Cashflow." },
+    system: "Du bist ein praktischer Budget-Coach. Antworte auf Deutsch mit konkreten, umsetzbaren Tipps zu Sparquoten und Cashflow." },
 } as const;
 type ModeId = keyof typeof MODES;
 
+const newSession = (): ChatSession => ({ id: uid(), title: "Neuer Chat", mode: "investment", country: "DE", messages: [], ts: Date.now() });
+
 export default function ExpertAdvisor() {
-  const [mode, setMode] = useState<ModeId>("investment");
-  const [country, setCountry] = useState<"DE" | "CH">("DE");
-  const [chats, setChats] = useState<Record<string, Msg[]>>({});
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeId, setActiveId] = useState("");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -29,75 +30,99 @@ export default function ExpertAdvisor() {
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadChats().then(setChats);
+    loadChats().then((list) => {
+      if (list && list.length) { setSessions(list); setActiveId(list[0].id); }
+      else { const s = newSession(); setSessions([s]); setActiveId(s.id); }
+    });
     loadNotes().then(setNotes);
     Promise.all([loadTransactions(), loadHoldings()]).then(([txs, holds]) => {
       const income = txs.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
       const expense = txs.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
-      const bal = income - expense;
-      const rate = income > 0 ? Math.round((bal / income) * 100) : 0;
+      const bal = income - expense, rate = income > 0 ? Math.round((bal / income) * 100) : 0;
       const cat = new Map<string, number>();
       txs.filter(t => t.amount < 0).forEach(t => cat.set(t.category, (cat.get(t.category) || 0) + Math.abs(t.amount)));
       const top = Array.from(cat, ([n, v]) => `${n} ${eur(v)}`).slice(0, 4).join(", ");
       const depot = holds.map(h => `${h.ticker} ${h.shares} Stk`).join(", ");
-      setCtx(`FINANZDATEN DES NUTZERS (für persönliche, konkrete Beratung; nicht ungefragt vorlesen):\n- Einnahmen/Monat: ${eur(income)}\n- Ausgaben/Monat: ${eur(expense)}\n- Bilanz: ${eur(bal)} (Sparquote ~${rate}%)\n- Top-Ausgaben: ${top || "–"}\n- Depot: ${depot || "–"}`);
+      setCtx(`FINANZDATEN DES NUTZERS (für persönliche Beratung; nicht ungefragt vorlesen):\n- Einnahmen/Monat: ${eur(income)}\n- Ausgaben/Monat: ${eur(expense)}\n- Bilanz: ${eur(bal)} (Sparquote ~${rate}%)\n- Top-Ausgaben: ${top || "–"}\n- Depot: ${depot || "–"}`);
     });
   }, []);
 
-  const thread = chats[mode] || [];
+  const active = sessions.find(s => s.id === activeId);
+  const persist = (next: ChatSession[]) => { setSessions(next); saveChats(next); };
+  const patchActive = (patch: Partial<ChatSession>) => persist(sessions.map(s => s.id === activeId ? { ...s, ...patch } : s));
+
+  const addChat = () => { const s = newSession(); persist([s, ...sessions]); setActiveId(s.id); };
+  const delChat = (id: string) => {
+    const next = sessions.filter(s => s.id !== id);
+    if (next.length === 0) { const s = newSession(); persist([s]); setActiveId(s.id); return; }
+    persist(next);
+    if (activeId === id) setActiveId(next[0].id);
+  };
 
   const send = async () => {
-    const text = input.trim(); if (!text || loading) return;
+    const text = input.trim(); if (!text || loading || !active) return;
     setError("");
-    const next = [...thread, { role: "user" as const, content: text }];
-    const updated = { ...chats, [mode]: next };
-    setChats(updated); saveChats(updated); setInput(""); setLoading(true);
-    const system = `${MODES[mode].system}\n\nLand für Steuer-/Rechtsfragen: ${country === "DE" ? "Deutschland" : "Schweiz"}.\n\n${ctx}`;
+    const msgs = [...active.messages, { role: "user" as const, content: text }];
+    const title = active.messages.length === 0 ? text.slice(0, 32) : active.title;
+    const updated = sessions.map(s => s.id === activeId ? { ...s, messages: msgs, title } : s);
+    persist(updated); setInput(""); setLoading(true);
+    const m = MODES[active.mode as ModeId];
+    const system = `${m.system}\n\nLand für Steuer-/Rechtsfragen: ${active.country === "DE" ? "Deutschland" : "Schweiz"}.\n\n${ctx}`;
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: next, system }) });
+      const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: msgs, system }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Fehler");
-      const done = { ...updated, [mode]: [...next, { role: "assistant" as const, content: data.text }] };
-      setChats(done); saveChats(done);
+      persist(updated.map(s => s.id === activeId ? { ...s, messages: [...msgs, { role: "assistant", content: data.text }] } : s));
       setTimeout(() => boxRef.current?.scrollTo(0, boxRef.current.scrollHeight), 50);
-    } catch (e: any) {
-      setError(e.message); setChats(chats); setInput(text);
-    } finally { setLoading(false); }
+    } catch (e: any) { setError(e.message); setInput(text); }
+    finally { setLoading(false); }
   };
 
   const pin = (text: string) => {
-    const n = [{ id: uid(), mode: MODES[mode].label, label: text.slice(0, 60), text, ts: Date.now() }, ...notes];
+    if (!active) return;
+    const n = [{ id: uid(), mode: MODES[active.mode as ModeId].label, label: text.slice(0, 60), text, ts: Date.now() }, ...notes];
     setNotes(n); saveNotes(n);
   };
   const unpin = (id: string) => { const n = notes.filter(x => x.id !== id); setNotes(n); saveNotes(n); };
-  const clearThread = () => { const u = { ...chats, [mode]: [] }; setChats(u); saveChats(u); };
 
-  const m = MODES[mode];
+  if (!active) return <div className="text-muted text-sm">Lädt…</div>;
+  const m = MODES[active.mode as ModeId];
 
   return (
     <div className="space-y-4">
+      {/* Chat-Sessions */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <button onClick={addChat} className="btn-ghost px-3 py-1.5 rounded-lg text-sm whitespace-nowrap shrink-0">＋ Neuer Chat</button>
+        {sessions.map(s => (
+          <div key={s.id} onClick={() => setActiveId(s.id)}
+            className={`chip flex items-center gap-2 whitespace-nowrap shrink-0 ${s.id === activeId ? "" : "opacity-70"}`}
+            style={s.id === activeId ? { borderColor: "#F5B544", color: "#fff" } : {}}>
+            <span className="max-w-[140px] truncate">{s.title}</span>
+            <button onClick={(e) => { e.stopPropagation(); delChat(s.id); }} className="text-muted hover:text-bad">✕</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Modus + Land (pro Chat) */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-2 flex-wrap">
           {(Object.keys(MODES) as ModeId[]).map(id => (
-            <button key={id} onClick={() => setMode(id)} className="chip" style={mode === id ? { background: `${MODES[id].color}22`, borderColor: MODES[id].color, color: "#fff" } : {}}>
+            <button key={id} onClick={() => patchActive({ mode: id })} className="chip"
+              style={active.mode === id ? { background: `${MODES[id].color}22`, borderColor: MODES[id].color, color: "#fff" } : {}}>
               <span className="mr-1">{MODES[id].icon}</span>{MODES[id].label}
             </button>
           ))}
         </div>
         <div className="flex gap-2 items-center">
           <span className="text-xs text-muted">Land:</span>
-          <button onClick={() => setCountry("DE")} className="chip" style={country === "DE" ? { borderColor: "#F5B544", color: "#F5B544" } : {}}>🇩🇪 DE</button>
-          <button onClick={() => setCountry("CH")} className="chip" style={country === "CH" ? { borderColor: "#F5B544", color: "#F5B544" } : {}}>🇨🇭 CH</button>
+          <button onClick={() => patchActive({ country: "DE" })} className="chip" style={active.country === "DE" ? { borderColor: "#F5B544", color: "#F5B544" } : {}}>🇩🇪 DE</button>
+          <button onClick={() => patchActive({ country: "CH" })} className="chip" style={active.country === "CH" ? { borderColor: "#F5B544", color: "#F5B544" } : {}}>🇨🇭 CH</button>
         </div>
       </div>
 
-      {/* Aktiver-Modus-Banner: macht den Wechsel sichtbar */}
       <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border" style={{ borderColor: `${m.color}55`, background: `${m.color}12` }}>
-        <div className="text-sm"><span className="mr-2">{m.icon}</span><b style={{ color: m.color }}>{m.label}-Berater</b> <span className="text-muted">· {country === "DE" ? "Deutschland" : "Schweiz"} · kennt deine Finanzdaten</span></div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setShowNotes(s => !s)} className="text-xs text-muted hover:text-ink2">📌 Gespeichert ({notes.length})</button>
-          {thread.length > 0 && <button onClick={clearThread} className="text-xs text-muted hover:text-bad">Verlauf leeren</button>}
-        </div>
+        <div className="text-sm"><span className="mr-2">{m.icon}</span><b style={{ color: m.color }}>{m.label}-Berater</b> <span className="text-muted">· {active.country === "DE" ? "Deutschland" : "Schweiz"} · kennt deine Finanzdaten</span></div>
+        <button onClick={() => setShowNotes(s => !s)} className="text-xs text-muted hover:text-ink2">📌 Gespeichert ({notes.length})</button>
       </div>
 
       {showNotes && (
@@ -113,10 +138,10 @@ export default function ExpertAdvisor() {
         </div>
       )}
 
-      <div className="card card-hl flex flex-col" style={{ height: "58vh", minHeight: 400 }}>
+      <div className="card card-hl flex flex-col" style={{ height: "54vh", minHeight: 380 }}>
         <div ref={boxRef} className="flex-1 overflow-y-auto p-5 space-y-4">
-          {thread.length === 0 && <div className="text-muted text-sm max-w-md">Frag den <b style={{ color: m.color }}>{m.label}-Berater</b> etwas. Er kennt deine Einnahmen, Ausgaben und dein Depot — also ruhig konkret fragen, z.B. „Wo kann ich diesen Monat am meisten sparen?"</div>}
-          {thread.map((msg, i) => (
+          {active.messages.length === 0 && <div className="text-muted text-sm max-w-md">Frag den <b style={{ color: m.color }}>{m.label}-Berater</b> etwas. Er kennt deine Einnahmen, Ausgaben und dein Depot — z.B. „Wo kann ich diesen Monat am meisten sparen?"</div>}
+          {active.messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className="max-w-[85%]">
                 <div className={`rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${msg.role === "user" ? "text-ink font-medium" : "bg-panel2 border border-line"}`} style={msg.role === "user" ? { background: m.color } : {}}>{msg.content}</div>

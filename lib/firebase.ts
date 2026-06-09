@@ -1,8 +1,7 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { getAuth, type Auth } from "firebase/auth";
 
-// Liest die Konfig aus den NEXT_PUBLIC_FIREBASE_* Variablen.
-// Sind sie nicht gesetzt, bleibt Firebase aus und die App nutzt localStorage.
 const config = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -15,15 +14,17 @@ const config = {
 export const cloudEnabled = Boolean(config.apiKey && config.projectId);
 
 let db: Firestore | null = null;
+let auth: Auth | null = null;
 
 if (cloudEnabled) {
   try {
     const app: FirebaseApp = getApps().length ? getApps()[0] : initializeApp(config);
     db = getFirestore(app);
+    auth = getAuth(app);
   } catch (e) {
-    console.error("Firebase init fehlgeschlagen, nutze localStorage:", e);
-    db = null;
+    console.error("Firebase init fehlgeschlagen:", e);
+    db = null; auth = null;
   }
 }
 
-export { db };
+export { db, auth };

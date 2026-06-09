@@ -2,7 +2,7 @@
 // zusaetzlich Firestore (wenn konfiguriert). Liest Firestore, faellt bei
 // Fehlern/leeren Daten auf localStorage zurueck -> Daten gehen nie verloren.
 
-import { db, cloudEnabled } from "./firebase";
+import { db, cloudEnabled, auth } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export type Currency = "EUR" | "USD" | "CHF";
@@ -13,6 +13,7 @@ export type Holding = {
 };
 export type Msg = { role: "user" | "assistant"; content: string };
 export type SavedNote = { id: string; mode: string; label: string; text: string; ts: number };
+export type ChatSession = { id: string; title: string; mode: string; country: "DE" | "CH"; messages: Msg[]; ts: number };
 
 const KEY_TX = "fos_transactions_v3";
 const KEY_HOLD = "fos_holdings_v3";
@@ -41,20 +42,27 @@ function readLocal<T>(key: string, fb: T): T {
 }
 function writeLocal<T>(key: string, v: T) { if (typeof window !== "undefined") window.localStorage.setItem(key, JSON.stringify(v)); }
 
+function cloudRef(docId: string) {
+  const u = auth?.currentUser?.uid;
+  return (db && u) ? doc(db, "users", u, "data", docId) : null;
+}
+
 async function readCloud<T>(docId: string, fb: T, localKey: string): Promise<T> {
-  if (!db) return readLocal(localKey, fb);
+  const ref = cloudRef(docId);
+  if (!ref) return readLocal(localKey, fb);         // nicht eingeloggt -> lokal
   try {
-    const snap = await getDoc(doc(db, "financial-os", docId));
+    const snap = await getDoc(ref);
     if (snap.exists() && snap.data().items !== undefined) return snap.data().items as T;
-    const fromLocal = readLocal(localKey, fb);     // erste Verbindung: lokale Daten in die Cloud migrieren
-    try { await setDoc(doc(db, "financial-os", docId), { items: fromLocal }); } catch { /* Regeln? egal */ }
+    const fromLocal = readLocal(localKey, fb);
+    try { await setDoc(ref, { items: fromLocal }); } catch { /* Regeln? egal */ }
     return fromLocal;
   } catch { return readLocal(localKey, fb); }
 }
 
 async function save<T>(localKey: string, docId: string, v: T) {
   writeLocal(localKey, v);                          // immer lokal (Safety-Net)
-  if (cloudEnabled && db) { try { await setDoc(doc(db, "financial-os", docId), { items: v }); } catch { /* ignore */ } }
+  const ref = cloudRef(docId);
+  if (ref) { try { await setDoc(ref, { items: v }); } catch { /* ignore */ } }
 }
 
 export const loadTransactions = () => cloudEnabled ? readCloud("transactions", seedTransactions, KEY_TX) : Promise.resolve(readLocal(KEY_TX, seedTransactions));
@@ -63,8 +71,8 @@ export const loadHoldings = () => cloudEnabled ? readCloud("holdings", seedHoldi
 export const saveHoldings = (h: Holding[]) => save(KEY_HOLD, "holdings", h);
 export const loadWatchlist = () => cloudEnabled ? readCloud("watchlist", defaultWatchlist, KEY_WATCH) : Promise.resolve(readLocal(KEY_WATCH, defaultWatchlist));
 export const saveWatchlist = (w: string[]) => save(KEY_WATCH, "watchlist", w);
-export const loadChats = () => cloudEnabled ? readCloud<Record<string, Msg[]>>("chats", {}, KEY_CHATS) : Promise.resolve(readLocal<Record<string, Msg[]>>(KEY_CHATS, {}));
-export const saveChats = (c: Record<string, Msg[]>) => save(KEY_CHATS, "chats", c);
+export const loadChats = () => cloudEnabled ? readCloud<ChatSession[]>("chats", [], KEY_CHATS) : Promise.resolve(readLocal<ChatSession[]>(KEY_CHATS, []));
+export const saveChats = (c: ChatSession[]) => save(KEY_CHATS, "chats", c);
 export const loadNotes = () => cloudEnabled ? readCloud<SavedNote[]>("notes", [], KEY_NOTES) : Promise.resolve(readLocal<SavedNote[]>(KEY_NOTES, []));
 export const saveNotes = (n: SavedNote[]) => save(KEY_NOTES, "notes", n);
 

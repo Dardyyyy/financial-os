@@ -108,7 +108,7 @@ export default function Market() {
               <div className="flex items-center gap-5">
                 <span className="num text-sm text-muted">{usd(m.price)}</span>
                 <span className={`num text-sm w-20 text-right ${m.change >= 0 ? "text-mint" : "text-bad"}`}>{m.change >= 0 ? "▲" : "▼"} {Math.abs(m.change).toFixed(2)}%</span>
-                <button onClick={() => removeTicker(m.sym)} className="text-muted hover:text-bad opacity-0 group-hover:opacity-100 transition">✕</button>
+                <button onClick={() => removeTicker(m.sym)} className="text-muted hover:text-bad transition">✕</button>
               </div>
             </div>
           ))}

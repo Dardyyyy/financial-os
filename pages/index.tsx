@@ -7,6 +7,7 @@ import Market from "../components/Market";
 import Ticker from "../components/Ticker";
 import Logo from "../components/Logo";
 import { cloudEnabled } from "../lib/store";
+import { AuthGate, useAuth } from "../lib/auth";
 
 const TABS = [
   { id: "dashboard", label: "Übersicht", icon: "◧" },
@@ -15,12 +16,16 @@ const TABS = [
   { id: "advisor", label: "Berater", icon: "✦" },
   { id: "portfolio", label: "Portfolio", icon: "◈" },
 ] as const;
-
 type TabId = (typeof TABS)[number]["id"];
 
 export default function Home() {
+  return <AuthGate><Shell /></AuthGate>;
+}
+
+function Shell() {
   const [tab, setTab] = useState<TabId>("dashboard");
   const active = TABS.find(t => t.id === tab)!;
+  const { user, logout } = useAuth();
 
   const titles: Record<TabId, string> = {
     dashboard: "Deine Finanzen auf einen Blick",
@@ -45,18 +50,27 @@ export default function Home() {
             <span className="text-lg leading-none w-5 text-center">{t.icon}</span>{t.label}
           </button>
         ))}
-        <div className="mt-auto px-2 text-[11px] text-muted">
-          <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${cloudEnabled ? "bg-mint" : "bg-muted"}`} />
-            {cloudEnabled ? "Cloud-Sync aktiv" : "Lokaler Speicher"}
+        <div className="mt-auto px-2 space-y-2">
+          {user && (
+            <div className="text-[11px] text-muted truncate" title={user.email || ""}>{user.email}</div>
+          )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted">
+              <span className={`w-1.5 h-1.5 rounded-full ${cloudEnabled ? "bg-mint" : "bg-muted"}`} />
+              {cloudEnabled ? "Cloud-Sync" : "Lokal"}
+            </div>
+            {user && <button onClick={logout} className="text-[11px] text-muted hover:text-bad">Abmelden</button>}
           </div>
         </div>
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="px-5 md:px-8 pt-6 pb-3">
-          <div className="text-xs uppercase tracking-[0.2em] text-gold/80 mb-1">{active.label}</div>
-          <h1 className="display text-2xl font-semibold">{titles[tab]}</h1>
+        <header className="px-5 md:px-8 pt-6 pb-3 flex items-end justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] text-gold/80 mb-1">{active.label}</div>
+            <h1 className="display text-2xl font-semibold">{titles[tab]}</h1>
+          </div>
+          {user && <button onClick={logout} className="md:hidden text-xs text-muted hover:text-bad">Abmelden</button>}
         </header>
 
         <Ticker />
