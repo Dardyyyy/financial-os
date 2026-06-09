@@ -14,6 +14,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <title>Financial OS</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0B1020" />
+        <link rel="icon" type="image/svg+xml" href="/icon.svg" />
       </Head>
       <div className={`${display.variable} ${sans.variable} ${mono.variable} min-h-screen`}>
         <Component {...pageProps} />
