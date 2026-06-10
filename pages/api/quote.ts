@@ -1,70 +1,53 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-// Liefert Kurse und Wechselkurse.
-//   Aktien:  /api/quote?type=stock&symbols=NBIS,CRWV   (FINNHUB_API_KEY)
-//            -> { prices:{SYM:price}, changes:{SYM:pct}, currency:"USD" }
-//   Krypto:  /api/quote?type=crypto&ids=bitcoin        (CoinGecko, EUR, kein Key)
-//   FX:      /api/quote?type=fx&from=USD&to=EUR        (frankfurter.app, kein Key)
-//            -> { rate }
-
+// Kurse + Wechselkurse mit klaren Fehlermeldungen.
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const type = String(req.query.type || "stock");
-
   try {
     if (type === "fx") {
-      const from = String(req.query.from || "USD");
-      const to = String(req.query.to || "EUR");
-      try {
-        const r = await fetch(`https://api.frankfurter.app/latest?from=${from}&to=${to}`);
-        const d = await r.json();
-        const rate = d?.rates?.[to];
-        if (rate) return res.status(200).json({ rate });
-      } catch { /* fallback unten */ }
-      try {
-        const r2 = await fetch(`https://open.er-api.com/v6/latest/${from}`);
-        const d2 = await r2.json();
-        const rate2 = d2?.rates?.[to];
-        if (rate2) return res.status(200).json({ rate: rate2 });
-      } catch { /* ignore */ }
-      return res.status(200).json({ rate: null, warning: "Wechselkurs nicht verfuegbar." });
+      const from = String(req.query.from || "USD"), to = String(req.query.to || "EUR");
+      try { const r = await fetch(`https://api.frankfurter.app/latest?from=${from}&to=${to}`); const d = await r.json(); if (d?.rates?.[to]) return res.status(200).json({ rate: d.rates[to] }); } catch {}
+      try { const r = await fetch(`https://open.er-api.com/v6/latest/${from}`); const d = await r.json(); if (d?.rates?.[to]) return res.status(200).json({ rate: d.rates[to] }); } catch {}
+      return res.status(200).json({ rate: null });
     }
 
     if (type === "crypto") {
       const ids = String(req.query.ids || "").split(",").map(s => s.trim()).filter(Boolean);
       if (!ids.length) return res.status(200).json({ prices: {} });
-      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=eur`;
-      const r = await fetch(url);
+      const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=eur`);
       const data = await r.json();
       const prices: Record<string, number> = {};
       for (const id of ids) if (data[id]?.eur != null) prices[id] = data[id].eur;
       return res.status(200).json({ prices, currency: "EUR" });
     }
 
-    // Aktien via Finnhub
     const key = process.env.FINNHUB_API_KEY;
-    if (!key) {
-      return res.status(200).json({
-        prices: {}, changes: {}, currency: "USD",
-        warning: "FINNHUB_API_KEY fehlt. Trage ihn in den Environment Variables ein, um Live-Aktienkurse zu laden.",
-      });
-    }
+    if (!key) return res.status(200).json({ prices: {}, changes: {}, currency: "USD", warning: "FINNHUB_API_KEY fehlt (in Vercel für Production eintragen + Redeploy)." });
+
     const symbols = String(req.query.symbols || "").split(",").map(s => s.trim()).filter(Boolean);
     if (!symbols.length) return res.status(200).json({ prices: {}, changes: {} });
 
     const prices: Record<string, number> = {};
     const changes: Record<string, number> = {};
+    let diag = "";
     await Promise.all(symbols.map(async (sym) => {
       try {
         const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${key}`);
-        const q = await r.json();
-        if (q && typeof q.c === "number" && q.c > 0) {
-          prices[sym] = q.c;                 // current price
-          if (typeof q.dp === "number") changes[sym] = q.dp; // percent change today
+        if (!r.ok) {
+          if (r.status === 401) diag = "Finnhub-Key ungültig (401). In Vercel prüfen: exakt der Key, keine Leerzeichen/Anführungszeichen, Production aktiv.";
+          else if (r.status === 429) diag = "Finnhub Rate-Limit erreicht (429). Kurz warten und erneut „aktualisieren".";
+          else if (r.status === 403) diag = "Finnhub: Zugriff verweigert (403) — Endpoint/Plan.";
+          else diag = `Finnhub-Fehler ${r.status}.`;
+          return;
         }
-      } catch { /* einzelne Fehler ignorieren */ }
+        const q = await r.json();
+        if (q && typeof q.c === "number" && q.c > 0) { prices[sym] = q.c; if (typeof q.dp === "number") changes[sym] = q.dp; }
+      } catch { diag = "Netzwerkfehler zu Finnhub."; }
     }));
 
-    return res.status(200).json({ prices, changes, currency: "USD" });
+    const out: any = { prices, changes, currency: "USD" };
+    if (Object.keys(prices).length === 0 && diag) out.warning = diag;
+    return res.status(200).json(out);
   } catch (e: any) {
     return res.status(500).json({ error: e?.message || "Quote-Fehler", prices: {}, changes: {} });
   }
