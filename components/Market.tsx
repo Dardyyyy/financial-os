@@ -12,6 +12,9 @@ const CATS: { id: CatId; label: string; icon: string; rate: number; color: strin
   { id: "custom", label: "Eigene", icon: "✏️", rate: 8, color: "#60A5FA", note: "freie Annahme" },
 ];
 
+// Risiko-Bandbreite je Kategorie (± Prozentpunkte um die erwartete Rendite)
+const SPREAD: Record<CatId, number> = { stock: 3, etf: 2.5, crypto: 8, custom: 2 };
+
 export default function Market() {
   const [watch, setWatch] = useState<string[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
@@ -28,6 +31,7 @@ export default function Market() {
   const [years, setYears] = useState(15);
   const [rate, setRate] = useState(7);
   const [sym, setSym] = useState("");
+  const [realMode, setRealMode] = useState(false);
 
   const fetchQuotes = async (list: string[]) => {
     if (!list.length) { setQuotes({}); return; }
@@ -56,18 +60,31 @@ export default function Market() {
   const addTicker = () => { const t = newT.toUpperCase().trim(); if (!t || watch.includes(t)) { setNewT(""); return; } const n = [...watch, t]; setWatch(n); saveWatchlist(n); setNewT(""); fetchQuotes(n); };
   const removeTicker = (t: string) => { const n = watch.filter(x => x !== t); setWatch(n); saveWatchlist(n); if (sym === t) setSym(n[0] || ""); };
 
-  // Projektion
-  const proj = useMemo(() => {
+  // Projektion mit Szenario-Band (pessimistisch / erwartet / optimistisch)
+  const calc = useMemo(() => {
     const s0 = mode === "monthly" ? 0 : start;
     const mRate = mode === "once" ? 0 : monthly;
-    const r = rate / 100 / 12;
-    const pts: { year: number; eingezahlt: number; wert: number }[] = [{ year: 0, eingezahlt: Math.round(s0), wert: Math.round(s0) }];
-    let v = s0, contrib = s0;
-    for (let mo = 1; mo <= years * 12; mo++) { v = v * (1 + r) + mRate; contrib += mRate; if (mo % 12 === 0) pts.push({ year: mo / 12, eingezahlt: Math.round(contrib), wert: Math.round(v) }); }
-    return pts;
-  }, [mode, start, monthly, years, rate]);
-  const fin = proj[proj.length - 1];
-  const invested = fin.eingezahlt, endValue = fin.wert, gain = endValue - invested;
+    const spread = SPREAD[cat];
+    const series = (annual: number) => {
+      const r = annual / 100 / 12; let v = s0; const arr = [s0];
+      for (let mo = 1; mo <= years * 12; mo++) { v = v * (1 + r) + mRate; if (mo % 12 === 0) arr.push(v); }
+      return arr;
+    };
+    const lo = series(Math.max(0, rate - spread)), ba = series(rate), hi = series(rate + spread);
+    let contrib = s0; const cArr = [s0];
+    for (let mo = 1; mo <= years * 12; mo++) { contrib += mRate; if (mo % 12 === 0) cArr.push(contrib); }
+    const pts = ba.map((b, i) => ({ year: i, eingezahlt: Math.round(cArr[i]), base: Math.round(b), band: [Math.round(lo[i]), Math.round(hi[i])] as [number, number] }));
+    return { pts, invested: Math.round(cArr[cArr.length - 1]), low: Math.round(lo[lo.length - 1]), base: Math.round(ba[ba.length - 1]), high: Math.round(hi[hi.length - 1]) };
+  }, [mode, start, monthly, years, rate, cat]);
+
+  const proj = calc.pts;
+  const infl = Math.pow(1.02, years);
+  const adj = (n: number) => (realMode ? n / infl : n);
+  const invested = calc.invested;
+  const endValue = adj(calc.base);
+  const gain = endValue - invested;
+  const loVal = adj(calc.low), hiVal = adj(calc.high);
+  const kEUR = (n: number) => `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
 
   const priceEur = (quotes[sym]?.price || 0) * fx;
   const sharesNow = cat === "stock" && priceEur > 0 ? (mode === "monthly" ? 0 : start) / priceEur : 0;
@@ -158,6 +175,12 @@ export default function Market() {
           ))}
         </div>
 
+        {/* Inflations-Schalter */}
+        <label className="inline-flex items-center gap-2 chip cursor-pointer select-none" style={realMode ? { borderColor: catObj.color, color: "#fff", background: `${catObj.color}18` } : {}}>
+          <input type="checkbox" checked={realMode} onChange={e => setRealMode(e.target.checked)} className="accent-gold w-4 h-4" />
+          kaufkraftbereinigt (2% Inflation)
+        </label>
+
         {/* Slider */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
           {mode !== "monthly" && <Slider label="Startbetrag" val={eur(start)}><input type="range" min={0} max={100000} step={500} value={start} onChange={e => setStart(+e.target.value)} className="w-full accent-gold" /></Slider>}
@@ -168,26 +191,28 @@ export default function Market() {
 
         {/* Ergebnis-Karten */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Stat label="Endwert" val={eur(endValue)} tone="gold" />
+          <Stat label={realMode ? "Erwartet (real)" : "Erwartet"} val={eur(endValue)} tone="gold" />
           <Stat label="Eingezahlt" val={eur(invested)} tone="muted" />
           <Stat label="Gewinn" val={eur(gain)} tone="mint" />
-          <Stat label={cat === "stock" ? `Stück ${sym}` : "Faktor"} val={cat === "stock" ? sharesNow.toFixed(2) : `${(invested > 0 ? endValue / invested : 0).toFixed(1)}×`} tone="default" />
+          <Stat label="Spanne (pess.–opt.)" val={`${kEUR(loVal)}–${kEUR(hiVal)} €`} tone="default" sub={`±${SPREAD[cat]}% p.a.`} />
         </div>
+        <div className="text-[11px] text-muted -mt-3">Band = realistische Streuung dieser Anlageform: bei <b style={{ color: catObj.color }}>{catObj.label}</b> rechnet die App mit ±{SPREAD[cat]} Prozentpunkten um deine erwartete Rendite{cat === "stock" && sharesNow > 0 ? ` · entspricht ~${sharesNow.toFixed(2)} Stück ${sym}` : ""}.</div>
 
         {/* Chart */}
         <div style={{ width: "100%", height: 280 }}>
           <ResponsiveContainer>
             <AreaChart data={proj} margin={{ top: 4, right: 4, left: -14, bottom: 0 }}>
               <defs>
-                <linearGradient id="mWert" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={catObj.color} stopOpacity={0.45} /><stop offset="100%" stopColor={catObj.color} stopOpacity={0} /></linearGradient>
-                <linearGradient id="mEin" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8794B0" stopOpacity={0.22} /><stop offset="100%" stopColor="#8794B0" stopOpacity={0} /></linearGradient>
+                <linearGradient id="mBand" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={catObj.color} stopOpacity={0.30} /><stop offset="100%" stopColor={catObj.color} stopOpacity={0.04} /></linearGradient>
+                <linearGradient id="mEin" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8794B0" stopOpacity={0.18} /><stop offset="100%" stopColor="#8794B0" stopOpacity={0} /></linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2a44" vertical={false} />
               <XAxis dataKey="year" tick={{ fill: "#8794B0", fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(y) => `${y}J`} />
               <YAxis tick={{ fill: "#8794B0", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-              <Tooltip contentStyle={{ background: "#0C1322", border: `1px solid ${catObj.color}`, borderRadius: 12 }} labelStyle={{ color: catObj.color }} itemStyle={{ color: "#fff", fontFamily: "var(--font-mono)" }} formatter={(v, n) => [eur2(Number(v)), n === "wert" ? "Wert" : "Eingezahlt"]} labelFormatter={(l) => `Jahr ${l}`} />
+              <Tooltip contentStyle={{ background: "#0C1322", border: `1px solid ${catObj.color}`, borderRadius: 12 }} labelStyle={{ color: catObj.color }} itemStyle={{ color: "#fff", fontFamily: "var(--font-mono)" }} formatter={(v: any, n) => Array.isArray(v) ? [`${eur2(v[0])} – ${eur2(v[1])}`, "Spanne"] : [eur2(Number(v)), n === "base" ? "Erwartet" : "Eingezahlt"]} labelFormatter={(l) => `Jahr ${l}`} />
+              <Area type="monotone" dataKey="band" stroke="none" fill="url(#mBand)" isAnimationActive={false} />
               <Area type="monotone" dataKey="eingezahlt" stroke="#8794B0" fill="url(#mEin)" strokeWidth={1.5} />
-              <Area type="monotone" dataKey="wert" stroke={catObj.color} fill="url(#mWert)" strokeWidth={2.5} />
+              <Area type="monotone" dataKey="base" stroke={catObj.color} fill="none" strokeWidth={2.5} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -229,7 +254,7 @@ function StockSelect({ value, options, onChange }: { value: string; options: str
 function Slider({ label, val, children }: { label: string; val: string; children: ReactNode }) {
   return (<div><div className="flex justify-between text-sm mb-2"><span className="text-muted">{label}</span><span className="num text-ink2 font-semibold">{val}</span></div>{children}</div>);
 }
-function Stat({ label, val, tone }: { label: string; val: string; tone: "gold" | "mint" | "muted" | "default" }) {
+function Stat({ label, val, tone, sub }: { label: string; val: string; tone: "gold" | "mint" | "muted" | "default"; sub?: string }) {
   const color = tone === "gold" ? "text-gold" : tone === "mint" ? "text-mint" : tone === "muted" ? "text-muted" : "text-ink2";
-  return (<div className="bg-panel2/60 border border-line/50 rounded-xl p-4"><div className="text-xs text-muted">{label}</div><div className={`display text-xl font-bold mt-1 num ${color}`}>{val}</div></div>);
+  return (<div className="bg-panel2/60 border border-line/50 rounded-xl p-4"><div className="text-xs text-muted">{label}</div><div className={`display text-xl font-bold mt-1 num ${color}`}>{val}</div>{sub && <div className="text-[10px] text-muted num mt-0.5">{sub}</div>}</div>);
 }
