@@ -144,7 +144,7 @@ export default function Market() {
         {cat === "stock" && (
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm text-muted">Wert:</span>
-            <select className="input max-w-[160px]" value={sym} onChange={e => setSym(e.target.value)}>{watch.map(s => <option key={s} value={s}>{s}</option>)}</select>
+            <StockSelect value={sym} options={watch} onChange={setSym} />
             {priceEur > 0
               ? <span className="text-sm num">Live: {usd(quotes[sym].price)} <span className="text-muted">≈ {eur2(priceEur)}</span></span>
               : <span className="text-xs text-muted">Kein Live-Kurs — „↻ Kurse aktualisieren" / Finnhub-Key prüfen.</span>}
@@ -193,6 +193,35 @@ export default function Market() {
         </div>
         <div className="text-xs text-muted">Zinseszins-Modellrechnung mit deiner angenommenen Rendite — keine Vorhersage, keine Anlageberatung. {cat === "stock" && "Stückzahl auf Basis des Live-Kurses (USD→EUR)."}</div>
       </div>
+    </div>
+  );
+}
+
+function StockSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)}
+        className="input flex items-center justify-between gap-3 min-w-[150px] cursor-pointer"
+        style={{ borderColor: open ? "#F5B544" : "#26314D" }}>
+        <span className="num font-semibold">{value || "—"}</span>
+        <span className="text-muted text-xs">{open ? "\u25B4" : "\u25BE"}</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-2 w-full min-w-[150px] max-h-64 overflow-y-auto card p-1.5 shadow-glow">
+            {options.map(o => (
+              <button key={o} onClick={() => { onChange(o); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm num transition ${o === value ? "text-gold" : "text-ink2 hover:bg-white/5"}`}
+                style={o === value ? { background: "rgba(245,181,68,0.14)" } : {}}>
+                {o}
+              </button>
+            ))}
+            {options.length === 0 && <div className="text-muted text-xs px-3 py-2">Keine Werte in der Watchlist</div>}
+          </div>
+        </>
+      )}
     </div>
   );
 }
