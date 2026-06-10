@@ -230,7 +230,7 @@ function StockSelect({ value, options, onChange }: { value: string; options: str
         className="input flex items-center justify-between gap-3 min-w-[150px] cursor-pointer"
         style={{ borderColor: open ? "#F5B544" : "#26314D" }}>
         <span className="num font-semibold">{value || "—"}</span>
-        <span className="text-muted text-xs">{open ? "\u25B4" : "\u25BE"}</span>
+        <span className="text-muted text-xs">{open ? "▴" : "▾"}</span>
       </button>
       {open && (
         <>

@@ -22,6 +22,7 @@ export default function Portfolio() {
   const [shares, setShares] = useState("");
   const [buy, setBuy] = useState("");
   const [curr, setCurr] = useState<"USD" | "EUR">("USD");
+  const [priceMsg, setPriceMsg] = useState("");
 
   useEffect(() => { loadHoldings().then(h => { setHolds(h); setReady(true); }); getUsdEur().then(setFx); }, []);
 
@@ -40,7 +41,7 @@ export default function Portfolio() {
   const pieData = rows.map(r => ({ name: r.ticker, value: Math.round(r.valueEur) }));
   const persist = (n: Holding[]) => { setHolds(n); saveHoldings(n); };
 
-  const switchMode = (crypto: boolean) => { setCryptoMode(crypto); setPicked(null); setResults([]); setQ(""); setSearchMsg(""); setCurr(crypto ? "EUR" : "USD"); };
+  const switchMode = (crypto: boolean) => { setCryptoMode(crypto); setPicked(null); setResults([]); setQ(""); setSearchMsg(""); setPriceMsg(""); setBuy(""); setCurr(crypto ? "EUR" : "USD"); };
 
   const doSearch = async () => {
     if (!q.trim()) return;
@@ -50,9 +51,27 @@ export default function Portfolio() {
       const list: Result[] = r.results || [];
       setResults(list);
       if (r.warning) setSearchMsg(r.warning);
-      else if (list.length === 0) setSearchMsg(`Keine Treffer f\u00fcr \u201E${q.trim()}\u201C.`);
-    } catch { setResults([]); setSearchMsg("Suche nicht erreichbar \u2014 ist die neue Version deployed?"); }
+      else if (list.length === 0) setSearchMsg(`Keine Treffer für „${q.trim()}“.`);
+    } catch { setResults([]); setSearchMsg("Suche nicht erreichbar — ist die neue Version deployed?"); }
     finally { setSearching(false); }
+  };
+
+  // Auswahl -> aktuellen Kurs automatisch als Kaufkurs uebernehmen
+  const pickResult = async (r: Result) => {
+    setPicked(r); setBuy(""); setPriceMsg("Aktueller Kurs wird geladen…");
+    try {
+      if (cryptoMode && r.cgId) {
+        const d = await fetch(`/api/quote?type=crypto&ids=${r.cgId}`).then(x => x.json());
+        const p = d.prices?.[r.cgId];
+        if (p != null) { setBuy(String(p)); setPriceMsg(`Aktueller Kurs ${eur2(p)} — übernommen`); }
+        else setPriceMsg("Kein Live-Kurs — Kaufkurs bitte selbst eintragen.");
+      } else {
+        const d = await fetch(`/api/quote?type=stock&symbols=${encodeURIComponent(r.symbol)}`).then(x => x.json());
+        const p = d.prices?.[r.symbol];
+        if (p != null) { setCurr("USD"); setBuy(String(p)); setPriceMsg(`Aktueller Kurs ${usd(p)} — übernommen`); }
+        else setPriceMsg(d.warning || "Kein Live-Kurs — Kaufkurs bitte selbst eintragen.");
+      }
+    } catch { setPriceMsg("Kurs konnte nicht geladen werden — Kaufkurs bitte selbst eintragen."); }
   };
 
   const refreshPrices = async () => {
@@ -70,7 +89,7 @@ export default function Portfolio() {
         if (h.kind === "crypto" && h.cgId && c.prices[h.cgId] != null) return { ...h, lastPrice: c.prices[h.cgId], currency: "EUR" as const };
         return h;
       }));
-      setNote(s.warning ? s.warning : `Aktualisiert ${new Date().toLocaleTimeString("de-DE")} \u00b7 1 USD = ${rate.toFixed(3)} EUR`);
+      setNote(s.warning ? s.warning : `Aktualisiert ${new Date().toLocaleTimeString("de-DE")} · 1 USD = ${rate.toFixed(3)} EUR`);
     } catch { setNote("Konnte Kurse nicht laden."); } finally { setRefreshing(false); }
   };
 
@@ -82,7 +101,7 @@ export default function Portfolio() {
       kind: cryptoMode ? "crypto" : "stock", currency: cryptoMode ? "EUR" : curr,
       cgId: cryptoMode ? picked.cgId : undefined,
     }]);
-    setPicked(null); setQ(""); setResults([]); setShares(""); setBuy(""); setSearchMsg("");
+    setPicked(null); setQ(""); setResults([]); setShares(""); setBuy(""); setSearchMsg(""); setPriceMsg("");
   };
 
   const remove = (id: string) => persist(holds.filter(h => h.id !== id));
@@ -91,13 +110,13 @@ export default function Portfolio() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="card card-hl p-6"><div className="text-sm text-muted">Depotwert</div><div className="display text-3xl font-bold mt-2 text-gold">{ready ? <CountUp value={totalValue} format={eur} /> : "\u2014"}</div></div>
-        <div className="card p-6"><div className="text-sm text-muted">Investiert</div><div className="display text-2xl font-bold mt-2 text-muted">{ready ? <CountUp value={totalCost} format={eur} /> : "\u2014"}</div></div>
-        <div className="card p-6"><div className="text-sm text-muted">Gewinn / Verlust</div><div className={`display text-2xl font-bold mt-2 ${totalPL >= 0 ? "text-mint" : "text-bad"}`}>{ready ? <CountUp value={totalPL} format={eur} /> : "\u2014"}<span className="num text-base ml-2">({totalPLPct >= 0 ? "+" : ""}{totalPLPct.toFixed(1)}%)</span></div></div>
+        <div className="card card-hl p-6"><div className="text-sm text-muted">Depotwert</div><div className="display text-3xl font-bold mt-2 text-gold">{ready ? <CountUp value={totalValue} format={eur} /> : "—"}</div></div>
+        <div className="card p-6"><div className="text-sm text-muted">Investiert</div><div className="display text-2xl font-bold mt-2 text-muted">{ready ? <CountUp value={totalCost} format={eur} /> : "—"}</div></div>
+        <div className="card p-6"><div className="text-sm text-muted">Gewinn / Verlust</div><div className={`display text-2xl font-bold mt-2 ${totalPL >= 0 ? "text-mint" : "text-bad"}`}>{ready ? <CountUp value={totalPL} format={eur} /> : "—"}<span className="num text-base ml-2">({totalPLPct >= 0 ? "+" : ""}{totalPLPct.toFixed(1)}%)</span></div></div>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <button className="btn" onClick={refreshPrices} disabled={refreshing}>{refreshing ? "L\u00e4dt Kurse\u2026" : "\u21bb Live-Kurse aktualisieren"}</button>
+        <button className="btn" onClick={refreshPrices} disabled={refreshing}>{refreshing ? "Lädt Kurse…" : "↻ Live-Kurse aktualisieren"}</button>
         {note && <span className="text-xs text-muted">{note}</span>}
       </div>
 
@@ -114,13 +133,13 @@ export default function Portfolio() {
                       <span className="text-[10px] text-muted border border-line rounded px-1">{r.currency}</span>
                       {r.kind === "crypto" && <span className="text-[10px] text-mint border border-mint/40 rounded px-1">CRYPTO</span>}
                     </div>
-                    <div className="text-xs text-muted truncate">{r.name} \u00b7 {r.shares} Stk</div>
+                    <div className="text-xs text-muted truncate">{r.name} · {r.shares} Stk</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <input className="input num w-24 text-right py-1.5" defaultValue={r.lastPrice} onBlur={e => updatePrice(r.id, parseFloat(e.target.value.replace(",", ".")) || r.lastPrice)} />
                   <div className="text-right w-28"><div className="num font-medium">{eur(r.valueEur)}</div><div className={`num text-xs ${r.pl >= 0 ? "text-mint" : "text-bad"}`}>{r.pl >= 0 ? "+" : ""}{r.plPct.toFixed(1)}%</div></div>
-                  <button onClick={() => remove(r.id)} className="text-muted hover:text-bad">\u2715</button>
+                  <button onClick={() => remove(r.id)} className="text-muted hover:text-bad">✕</button>
                 </div>
               </div>
             ))}
@@ -138,13 +157,13 @@ export default function Portfolio() {
               <>
                 <div className="flex gap-2">
                   <input className="input" placeholder={cryptoMode ? "Krypto suchen (z.B. Ethereum)" : "Aktie suchen (z.B. Nvidia)"} value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()} />
-                  <button className="btn-ghost px-4 rounded-xl" onClick={doSearch} disabled={searching}>{searching ? "\u2026" : "Suchen"}</button>
+                  <button className="btn-ghost px-4 rounded-xl" onClick={doSearch} disabled={searching}>{searching ? "…" : "Suchen"}</button>
                 </div>
                 {searchMsg && <div className="text-xs text-muted">{searchMsg}</div>}
                 {results.length > 0 && (
                   <div className="border border-line rounded-xl divide-y divide-line/50 max-h-56 overflow-y-auto">
                     {results.map(r => (
-                      <button key={r.symbol + (r.cgId || "")} onClick={() => setPicked(r)} className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between">
+                      <button key={r.symbol + (r.cgId || "")} onClick={() => pickResult(r)} className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between">
                         <span className="text-sm truncate">{r.name}</span>
                         <span className="num text-xs text-gold ml-2">{r.symbol}</span>
                       </button>
@@ -156,14 +175,15 @@ export default function Portfolio() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between bg-panel2/60 border border-line rounded-xl px-3 py-2">
                   <div><span className="font-semibold">{picked.symbol}</span> <span className="text-xs text-muted">{picked.name}</span></div>
-                  <button onClick={() => setPicked(null)} className="text-muted hover:text-bad text-sm">\u00e4ndern \u2715</button>
+                  <button onClick={() => { setPicked(null); setPriceMsg(""); setBuy(""); }} className="text-muted hover:text-bad text-sm">ändern ✕</button>
                 </div>
+                {priceMsg && <div className="text-xs text-muted">{priceMsg}</div>}
                 <div className={`grid ${cryptoMode ? "grid-cols-2" : "grid-cols-3"} gap-2`}>
-                  <input className="input num" placeholder="St\u00fcck" value={shares} onChange={e => setShares(e.target.value)} />
+                  <input className="input num" placeholder="Stück" value={shares} onChange={e => setShares(e.target.value)} />
                   <input className="input num" placeholder={`Kaufkurs (${cryptoMode ? "EUR" : curr})`} value={buy} onChange={e => setBuy(e.target.value)} />
                   {!cryptoMode && <select className="input" value={curr} onChange={e => setCurr(e.target.value as "USD" | "EUR")}><option value="USD">USD</option><option value="EUR">EUR</option></select>}
                 </div>
-                <button className="btn w-full" onClick={addPosition}>{cryptoMode ? "Krypto" : "Position"} hinzuf\u00fcgen</button>
+                <button className="btn w-full" onClick={addPosition}>{cryptoMode ? "Krypto" : "Position"} hinzufügen</button>
               </div>
             )}
           </div>

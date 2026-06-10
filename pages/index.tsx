@@ -5,6 +5,7 @@ import ExpertAdvisor from "../components/ExpertAdvisor";
 import Portfolio from "../components/Portfolio";
 import Market from "../components/Market";
 import Budget from "../components/Budget";
+import Assets from "../components/Assets";
 import Ticker from "../components/Ticker";
 import Logo from "../components/Logo";
 import { cloudEnabled } from "../lib/store";
@@ -15,6 +16,7 @@ const TABS = [
   { id: "market", label: "Markt", icon: "◮" },
   { id: "planner", label: "Planer", icon: "◭" },
   { id: "budget", label: "Budget", icon: "▤" },
+  { id: "assets", label: "Vermögen", icon: "◰" },
   { id: "advisor", label: "Berater", icon: "✦" },
   { id: "portfolio", label: "Portfolio", icon: "◈" },
 ] as const;
@@ -34,6 +36,7 @@ function Shell() {
     market: "Märkte & Top Mover",
     planner: "Was dein Geld in Zukunft wird",
     budget: "Budget & Liquidität",
+    assets: "Vermögen & Sachwerte",
     advisor: "Frag deinen Berater",
     portfolio: "Dein Depot in Echtzeit",
   };
@@ -83,14 +86,15 @@ function Shell() {
           {tab === "market" && <Market />}
           {tab === "planner" && <InvestmentPlanner />}
           {tab === "budget" && <Budget />}
+          {tab === "assets" && <Assets />}
           {tab === "advisor" && <ExpertAdvisor />}
           {tab === "portfolio" && <Portfolio />}
         </main>
       </div>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-ink/90 backdrop-blur border-t border-line/60 flex">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-ink/90 backdrop-blur border-t border-line/60 flex overflow-x-auto no-scrollbar">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-3 flex flex-col items-center gap-1 text-[10px] font-semibold ${tab === t.id ? "text-gold" : "text-muted"}`}>
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 min-w-[58px] py-3 flex flex-col items-center gap-1 text-[10px] font-semibold ${tab === t.id ? "text-gold" : "text-muted"}`}>
             <span className="text-lg leading-none">{t.icon}</span>{t.label}
           </button>
         ))}

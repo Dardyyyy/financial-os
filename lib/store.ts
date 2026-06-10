@@ -17,6 +17,8 @@ export type ChatSession = { id: string; title: string; mode: string; country: "D
 export type FixedCost = { id: string; name: string; amount: number };                 // monatlich wiederkehrend
 export type OneTimeCost = { id: string; name: string; amount: number; month: number }; // month 1..12 (Jan..Dez)
 export type BudgetData = { income: number; fixed: FixedCost[]; oneTime: OneTimeCost[] };
+export type AssetKind = "immobilie" | "bargeld" | "edelmetall" | "beteiligung" | "sonstiges";
+export type Asset = { id: string; name: string; kind: AssetKind; value: number; debt: number; note?: string };
 
 const KEY_TX = "fos_transactions_v3";
 const KEY_HOLD = "fos_holdings_v3";
@@ -24,6 +26,7 @@ const KEY_WATCH = "fos_watchlist_v1";
 const KEY_CHATS = "fos_chats_v1";
 const KEY_NOTES = "fos_notes_v1";
 const KEY_BUDGET = "fos_budget_v1";
+const KEY_ASSETS = "fos_assets_v1";
 
 export const seedTransactions: Tx[] = [
   { id: "t1", date: "2026-06-01", desc: "Gehalt Roche", category: "Einkommen", amount: 5200, currency: "EUR" },
@@ -97,6 +100,12 @@ export const loadNotes = () => cloudEnabled ? readCloud<SavedNote[]>("notes", []
 export const saveNotes = (n: SavedNote[]) => save(KEY_NOTES, "notes", n);
 export const loadBudget = () => cloudEnabled ? readCloud<BudgetData>("budget", seedBudget, KEY_BUDGET) : Promise.resolve(readLocal<BudgetData>(KEY_BUDGET, seedBudget));
 export const saveBudget = (b: BudgetData) => save(KEY_BUDGET, "budget", b);
+
+export const seedAssets: Asset[] = [
+  { id: "as1", name: "Notgroschen (Tagesgeld)", kind: "bargeld", value: 8000, debt: 0 },
+];
+export const loadAssets = () => cloudEnabled ? readCloud<Asset[]>("assets", seedAssets, KEY_ASSETS) : Promise.resolve(readLocal<Asset[]>(KEY_ASSETS, seedAssets));
+export const saveAssets = (a: Asset[]) => save(KEY_ASSETS, "assets", a);
 
 // ---- FX (alles -> EUR) ----
 const FB: Record<string, number> = { USD: 0.92, CHF: 1.05 };
