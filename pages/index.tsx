@@ -4,6 +4,7 @@ import InvestmentPlanner from "../components/InvestmentPlanner";
 import ExpertAdvisor from "../components/ExpertAdvisor";
 import Portfolio from "../components/Portfolio";
 import Market from "../components/Market";
+import Budget from "../components/Budget";
 import Ticker from "../components/Ticker";
 import Logo from "../components/Logo";
 import { cloudEnabled } from "../lib/store";
@@ -13,6 +14,7 @@ const TABS = [
   { id: "dashboard", label: "Übersicht", icon: "◧" },
   { id: "market", label: "Markt", icon: "◮" },
   { id: "planner", label: "Planer", icon: "◭" },
+  { id: "budget", label: "Budget", icon: "▤" },
   { id: "advisor", label: "Berater", icon: "✦" },
   { id: "portfolio", label: "Portfolio", icon: "◈" },
 ] as const;
@@ -31,6 +33,7 @@ function Shell() {
     dashboard: "Deine Finanzen auf einen Blick",
     market: "Märkte & Top Mover",
     planner: "Was dein Geld in Zukunft wird",
+    budget: "Budget & Liquidität",
     advisor: "Frag deinen Berater",
     portfolio: "Dein Depot in Echtzeit",
   };
@@ -79,6 +82,7 @@ function Shell() {
           {tab === "dashboard" && <Dashboard />}
           {tab === "market" && <Market />}
           {tab === "planner" && <InvestmentPlanner />}
+          {tab === "budget" && <Budget />}
           {tab === "advisor" && <ExpertAdvisor />}
           {tab === "portfolio" && <Portfolio />}
         </main>

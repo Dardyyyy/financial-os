@@ -14,12 +14,16 @@ export type Holding = {
 export type Msg = { role: "user" | "assistant"; content: string };
 export type SavedNote = { id: string; mode: string; label: string; text: string; ts: number };
 export type ChatSession = { id: string; title: string; mode: string; country: "DE" | "CH"; messages: Msg[]; ts: number };
+export type FixedCost = { id: string; name: string; amount: number };                 // monatlich wiederkehrend
+export type OneTimeCost = { id: string; name: string; amount: number; month: number }; // month 1..12 (Jan..Dez)
+export type BudgetData = { income: number; fixed: FixedCost[]; oneTime: OneTimeCost[] };
 
 const KEY_TX = "fos_transactions_v3";
 const KEY_HOLD = "fos_holdings_v3";
 const KEY_WATCH = "fos_watchlist_v1";
 const KEY_CHATS = "fos_chats_v1";
 const KEY_NOTES = "fos_notes_v1";
+const KEY_BUDGET = "fos_budget_v1";
 
 export const seedTransactions: Tx[] = [
   { id: "t1", date: "2026-06-01", desc: "Gehalt Roche", category: "Einkommen", amount: 5200, currency: "EUR" },
@@ -35,6 +39,22 @@ export const seedHoldings: Holding[] = [
   { id: "h4", ticker: "ENR", name: "Siemens Energy", shares: 30, buyPrice: 41, lastPrice: 62, kind: "stock", currency: "EUR" },
 ];
 export const defaultWatchlist = ["NBIS", "CRWV", "VRT", "NVDA", "AMD", "AVGO", "GEV", "VST", "CEG", "ETN", "ANET", "TSM"];
+
+export const seedBudget: BudgetData = {
+  income: 5200,
+  fixed: [
+    { id: "f1", name: "Miete", amount: 1250 },
+    { id: "f2", name: "Strom & Internet", amount: 140 },
+    { id: "f3", name: "Lebensmittel", amount: 420 },
+    { id: "f4", name: "Abos & Handy", amount: 80 },
+    { id: "f5", name: "Mobilität / Auto", amount: 220 },
+  ],
+  oneTime: [
+    { id: "o1", name: "KFZ-Versicherung", amount: 900, month: 1 },
+    { id: "o2", name: "Urlaub", amount: 1800, month: 7 },
+    { id: "o3", name: "Geschenke / Weihnachten", amount: 600, month: 12 },
+  ],
+};
 
 function readLocal<T>(key: string, fb: T): T {
   if (typeof window === "undefined") return fb;
@@ -75,6 +95,8 @@ export const loadChats = () => cloudEnabled ? readCloud<ChatSession[]>("chats", 
 export const saveChats = (c: ChatSession[]) => save(KEY_CHATS, "chats", c);
 export const loadNotes = () => cloudEnabled ? readCloud<SavedNote[]>("notes", [], KEY_NOTES) : Promise.resolve(readLocal<SavedNote[]>(KEY_NOTES, []));
 export const saveNotes = (n: SavedNote[]) => save(KEY_NOTES, "notes", n);
+export const loadBudget = () => cloudEnabled ? readCloud<BudgetData>("budget", seedBudget, KEY_BUDGET) : Promise.resolve(readLocal<BudgetData>(KEY_BUDGET, seedBudget));
+export const saveBudget = (b: BudgetData) => save(KEY_BUDGET, "budget", b);
 
 // ---- FX (alles -> EUR) ----
 const FB: Record<string, number> = { USD: 0.92, CHF: 1.05 };
