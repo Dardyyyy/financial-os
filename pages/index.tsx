@@ -53,7 +53,7 @@ function Shell() {
         </div>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} className={`nav-item ${tab === t.id ? "active" : ""}`}>
-            <span className="text-lg leading-none w-5 text-center">{t.icon}</span>{t.label}
+            <span className="nav-accent" />{t.label}
           </button>
         ))}
         <div className="mt-auto px-2 space-y-2">
@@ -92,10 +92,11 @@ function Shell() {
         </main>
       </div>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-ink/90 backdrop-blur border-t border-line/60 flex overflow-x-auto no-scrollbar">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-[#080B16]/80 backdrop-blur-xl border-t border-line/60 flex overflow-x-auto no-scrollbar">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 min-w-[58px] py-3 flex flex-col items-center gap-1 text-[10px] font-semibold ${tab === t.id ? "text-gold" : "text-muted"}`}>
-            <span className="text-lg leading-none">{t.icon}</span>{t.label}
+          <button key={t.id} onClick={() => setTab(t.id)} className={`relative flex-1 min-w-[64px] py-3.5 text-[11px] font-semibold transition ${tab === t.id ? "text-gold" : "text-muted"}`}>
+            <span className="absolute top-0 left-1/2 -translate-x-1/2 h-[3px] w-7 rounded-full transition" style={tab === t.id ? { background: "linear-gradient(90deg,#F5B544,#5EEAD4)", boxShadow: "0 0 10px rgba(245,181,68,0.7)" } : { background: "transparent" }} />
+            {t.label}
           </button>
         ))}
       </nav>

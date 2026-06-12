@@ -18,7 +18,8 @@ export type FixedCost = { id: string; name: string; amount: number };           
 export type OneTimeCost = { id: string; name: string; amount: number; month: number }; // month 1..12 (Jan..Dez)
 export type BudgetData = { income: number; fixed: FixedCost[]; oneTime: OneTimeCost[] };
 export type AssetKind = "immobilie" | "bargeld" | "edelmetall" | "beteiligung" | "sonstiges";
-export type Asset = { id: string; name: string; kind: AssetKind; value: number; debt: number; note?: string };
+export type Mortgage = { price: number; equity: number; ratePct: number; tilgungPct: number; start: string }; // start "YYYY-MM"
+export type Asset = { id: string; name: string; kind: AssetKind; value: number; debt: number; note?: string; mortgage?: Mortgage };
 
 const KEY_TX = "fos_transactions_v3";
 const KEY_HOLD = "fos_holdings_v3";
