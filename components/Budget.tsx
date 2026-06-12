@@ -12,6 +12,7 @@ export default function Budget() {
   // Eingabe-Felder
   const [fName, setFName] = useState(""); const [fAmt, setFAmt] = useState("");
   const [oName, setOName] = useState(""); const [oAmt, setOAmt] = useState(""); const [oMonth, setOMonth] = useState(1);
+  const [startMonth, setStartMonth] = useState(new Date().getMonth() + 1); // ab welchem Monat das Diagramm startet
 
   useEffect(() => { loadBudget().then(d => { setData(d); setReady(true); }); }, []);
   const persist = (d: BudgetData) => { setData(d); saveBudget(d); };
@@ -21,19 +22,19 @@ export default function Budget() {
   const ruecklage = annualOneTime / 12;                          // Sparbetrag/Monat für einmalige Kosten (Sinking Fund)
   const freiZumAnlegen = data.income - fixedTotal - ruecklage;   // geglätteter Überschuss
 
-  // 12-Monats-Verlauf
+  // 12-Monats-Verlauf ab gewähltem Startmonat (rollierend)
   const months = useMemo(() => {
-    let bal = 0, reserve = 0, minReserve = 0;
-    return MONTHS.map((label, i) => {
-      const m = i + 1;
-      const einmalig = data.oneTime.filter(o => o.month === m).reduce((s, o) => s + (o.amount || 0), 0);
-      const frei = data.income - fixedTotal - einmalig;          // echter Cash-Überschuss des Monats
+    let bal = 0, reserve = 0;
+    return Array.from({ length: 12 }, (_, i) => {
+      const cm = ((startMonth - 1 + i) % 12) + 1;          // Kalendermonat 1..12
+      const label = MONTHS[cm - 1];
+      const einmalig = data.oneTime.filter(o => o.month === cm).reduce((s, o) => s + (o.amount || 0), 0);
+      const frei = data.income - fixedTotal - einmalig;     // echter Cash-Überschuss des Monats
       bal += frei;
-      reserve += ruecklage - einmalig;                            // Rücklagen-Konto (Sparen minus Abfluss)
-      if (reserve < minReserve) minReserve = reserve;
+      reserve += ruecklage - einmalig;                      // Rücklagen-Konto (Sparen minus Abfluss)
       return { label, fix: Math.round(fixedTotal), einmalig: Math.round(einmalig), einnahmen: Math.round(data.income), frei: Math.round(frei), kontostand: Math.round(bal), reserve: Math.round(reserve) };
     });
-  }, [data, fixedTotal, ruecklage]);
+  }, [data, fixedTotal, ruecklage, startMonth]);
 
   const minKonto = Math.min(...months.map(m => m.kontostand), 0);
   const minReserve = Math.min(...months.map(m => m.reserve), 0);
@@ -79,8 +80,16 @@ export default function Budget() {
 
       {/* 12-Monats-Chart */}
       <div className="card p-6">
-        <div className="font-semibold display mb-1">Dein Jahr im Cashflow</div>
-        <div className="text-xs text-muted mb-4">Balken = Ausgaben pro Monat (fix + einmalig), Linie = Kontostand-Verlauf, wenn du den Überschuss liegen lässt.</div>
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+          <div className="font-semibold display">Dein Jahr im Cashflow</div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted">Start ab</span>
+            <select className="input w-auto py-1.5 text-sm" value={startMonth} onChange={e => setStartMonth(+e.target.value)}>
+              {MONTHS.map((mn, i) => <option key={mn} value={i + 1}>{mn}{i + 1 === (new Date().getMonth() + 1) ? " (dieser Monat)" : ""}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="text-xs text-muted mb-4">Balken = Ausgaben pro Monat (fix + einmalig), Linie = Kontostand-Verlauf ab <b className="text-ink2">{MONTHS[startMonth - 1]}</b>, wenn du den Überschuss liegen lässt.</div>
         <div style={{ width: "100%", height: 320 }}>
           <ResponsiveContainer>
             <ComposedChart data={months} margin={{ top: 6, right: 6, left: -10, bottom: 0 }}>
