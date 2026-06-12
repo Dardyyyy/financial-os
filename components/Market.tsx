@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
-import { loadWatchlist, saveWatchlist, getUsdEur, usd, eur, eur2 } from "../lib/store";
+import { loadWatchlist, saveWatchlist, getUsdEur, usd, eur, eur2, companyName } from "../lib/store";
 
 type Quote = { price: number; change: number };
 type CatId = "stock" | "etf" | "crypto" | "custom";
@@ -103,14 +103,24 @@ export default function Market() {
       {movers.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="card card-hl p-5">
-            <div className="text-xs uppercase tracking-widest text-mint mb-1">Top Gainer heute</div>
-            <div className="flex items-baseline justify-between"><span className="display text-2xl font-bold">{topGainer.sym}</span><span className="num text-mint text-lg">▲ {topGainer.change.toFixed(2)}%</span></div>
-            <div className="num text-muted text-sm mt-1">{usd(topGainer.price)}</div>
+            <div className="text-xs uppercase tracking-widest text-mint mb-2">Top Gainer heute</div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="display text-xl font-bold leading-tight truncate">{companyName(topGainer.sym)}</div>
+                <div className="num text-xs text-muted mt-1">{topGainer.sym} · {usd(topGainer.price)}</div>
+              </div>
+              <span className="num text-mint text-lg shrink-0">▲ {topGainer.change.toFixed(2)}%</span>
+            </div>
           </div>
           <div className="card p-5">
-            <div className="text-xs uppercase tracking-widest text-bad mb-1">Größter Verlierer heute</div>
-            <div className="flex items-baseline justify-between"><span className="display text-2xl font-bold">{topLoser.sym}</span><span className={`num text-lg ${topLoser.change >= 0 ? "text-mint" : "text-bad"}`}>{topLoser.change >= 0 ? "▲" : "▼"} {Math.abs(topLoser.change).toFixed(2)}%</span></div>
-            <div className="num text-muted text-sm mt-1">{usd(topLoser.price)}</div>
+            <div className="text-xs uppercase tracking-widest text-bad mb-2">Größter Verlierer heute</div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="display text-xl font-bold leading-tight truncate">{companyName(topLoser.sym)}</div>
+                <div className="num text-xs text-muted mt-1">{topLoser.sym} · {usd(topLoser.price)}</div>
+              </div>
+              <span className={`num text-lg shrink-0 ${topLoser.change >= 0 ? "text-mint" : "text-bad"}`}>{topLoser.change >= 0 ? "▲" : "▼"} {Math.abs(topLoser.change).toFixed(2)}%</span>
+            </div>
           </div>
         </div>
       )}
@@ -118,13 +128,18 @@ export default function Market() {
       {movers.length > 0 && (
         <div className="card p-6">
           <div className="font-semibold display mb-4">Watchlist · nach Tagesbewegung</div>
-          <div className="space-y-2">
+          <div className="space-y-1">
             {movers.map((m, i) => (
-              <div key={m.sym} className="flex items-center justify-between py-2 border-b border-line/40">
-                <div className="flex items-center gap-3"><span className="num text-xs text-muted w-5">{i + 1}</span><span className="font-semibold w-16">{m.sym}</span></div>
-                <div className="flex items-center gap-5">
-                  <span className="num text-sm text-muted">{usd(m.price)}</span>
-                  <span className={`num text-sm w-20 text-right ${m.change >= 0 ? "text-mint" : "text-bad"}`}>{m.change >= 0 ? "▲" : "▼"} {Math.abs(m.change).toFixed(2)}%</span>
+              <div key={m.sym} className="flex items-center justify-between gap-3 py-2.5 border-b border-line/40 last:border-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="num text-xs text-muted w-5 shrink-0">{i + 1}</span>
+                  <div className="min-w-0">
+                    <div className="font-semibold leading-tight truncate">{companyName(m.sym)}</div>
+                    <div className="num text-[11px] text-muted">{m.sym} · {usd(m.price)}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className={`num text-sm ${m.change >= 0 ? "text-mint" : "text-bad"}`}>{m.change >= 0 ? "▲" : "▼"} {Math.abs(m.change).toFixed(2)}%</span>
                   <button onClick={() => removeTicker(m.sym)} className="text-muted hover:text-bad">✕</button>
                 </div>
               </div>
@@ -227,20 +242,21 @@ function StockSelect({ value, options, onChange }: { value: string; options: str
   return (
     <div className="relative">
       <button onClick={() => setOpen(o => !o)}
-        className="input flex items-center justify-between gap-3 min-w-[150px] cursor-pointer"
+        className="input flex items-center justify-between gap-3 min-w-[200px] cursor-pointer"
         style={{ borderColor: open ? "#F5B544" : "#26314D" }}>
-        <span className="num font-semibold">{value || "—"}</span>
-        <span className="text-muted text-xs">{open ? "▴" : "▾"}</span>
+        <span className="truncate text-left"><span className="font-semibold">{value ? companyName(value) : "—"}</span> {value && <span className="num text-xs text-muted">{value}</span>}</span>
+        <span className="text-muted text-xs shrink-0">{open ? "▴" : "▾"}</span>
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 mt-2 w-full min-w-[150px] max-h-64 overflow-y-auto card p-1.5 shadow-glow">
+          <div className="absolute z-20 mt-2 w-full min-w-[220px] max-h-64 overflow-y-auto card p-1.5 shadow-glow">
             {options.map(o => (
               <button key={o} onClick={() => { onChange(o); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm num transition ${o === value ? "text-gold" : "text-ink2 hover:bg-white/5"}`}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center justify-between gap-2 ${o === value ? "text-gold" : "text-ink2 hover:bg-white/5"}`}
                 style={o === value ? { background: "rgba(245,181,68,0.14)" } : {}}>
-                {o}
+                <span className="truncate">{companyName(o)}</span>
+                <span className="num text-[11px] text-muted shrink-0">{o}</span>
               </button>
             ))}
             {options.length === 0 && <div className="text-muted text-xs px-3 py-2">Keine Werte in der Watchlist</div>}

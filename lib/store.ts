@@ -43,6 +43,23 @@ export const seedHoldings: Holding[] = [
 ];
 export const defaultWatchlist = ["NBIS", "CRWV", "VRT", "NVDA", "AMD", "AVGO", "GEV", "VST", "CEG", "ETN", "ANET", "TSM"];
 
+// Ticker -> ausgeschriebener Firmenname (fuer schoenere Anzeige)
+export const COMPANY_NAMES: Record<string, string> = {
+  NBIS: "Nebius Group", CRWV: "CoreWeave", VRT: "Vertiv Holdings", NVDA: "NVIDIA", AMD: "Advanced Micro Devices",
+  AVGO: "Broadcom", GEV: "GE Vernova", VST: "Vistra", CEG: "Constellation Energy", ETN: "Eaton",
+  ANET: "Arista Networks", TSM: "Taiwan Semiconductor", MSCI: "MSCI Inc.", ENR: "Siemens Energy", SMCI: "Super Micro Computer",
+  AAPL: "Apple", MSFT: "Microsoft", GOOGL: "Alphabet (Google)", GOOG: "Alphabet (Google)", AMZN: "Amazon",
+  META: "Meta Platforms", TSLA: "Tesla", NFLX: "Netflix", INTC: "Intel", MU: "Micron Technology",
+  DELL: "Dell Technologies", PLTR: "Palantir", ORCL: "Oracle", CRM: "Salesforce", ADBE: "Adobe",
+  QCOM: "Qualcomm", TXN: "Texas Instruments", MRVL: "Marvell", ASML: "ASML", ARM: "Arm Holdings",
+  COIN: "Coinbase", MSTR: "MicroStrategy", PYPL: "PayPal", SHOP: "Shopify", UBER: "Uber",
+  DIS: "Walt Disney", BA: "Boeing", JPM: "JPMorgan Chase", V: "Visa", MA: "Mastercard",
+  KO: "Coca-Cola", PEP: "PepsiCo", MCD: "McDonald's", NKE: "Nike", SBUX: "Starbucks",
+  WMT: "Walmart", COST: "Costco", PG: "Procter & Gamble", JNJ: "Johnson & Johnson", PFE: "Pfizer",
+  XOM: "Exxon Mobil", CVX: "Chevron", BAC: "Bank of America", AMAT: "Applied Materials", LRCX: "Lam Research",
+};
+export const companyName = (ticker: string) => COMPANY_NAMES[ticker] || ticker;
+
 export const seedBudget: BudgetData = {
   income: 5200,
   fixed: [
