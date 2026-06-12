@@ -207,6 +207,23 @@ export const fmt2 = (n: number, c: Currency) => new Intl.NumberFormat("de-DE", {
 export const convertCur = (amount: number, from: Currency, to: Currency, fxToEur: Record<string, number>) => amount * (fxToEur[from] ?? 1) / (fxToEur[to] ?? 1);
 export const CURRENCIES: Currency[] = ["EUR", "CHF", "USD"];
 
+// Robustes Parsen von Betraegen: erkennt Dezimal- vs. Tausendertrennzeichen (de/ch/us)
+export function parseAmount(input: string): number {
+  let s = (input || "").trim().replace(/[\s'\u2019]/g, ""); // Leerzeichen + (Schweizer) Hochkomma raus
+  if (!s) return 0;
+  const lastDot = s.lastIndexOf(".");
+  const lastComma = s.lastIndexOf(",");
+  const dec = Math.max(lastDot, lastComma);
+  if (dec === -1) return parseFloat(s.replace(/[^0-9-]/g, "")) || 0;
+  const after = s.length - dec - 1;
+  if (after === 1 || after === 2) { // 1-2 Stellen nach dem letzten Trenner => Dezimaltrenner
+    const intPart = s.slice(0, dec).replace(/[^0-9-]/g, "");
+    const fracPart = s.slice(dec + 1).replace(/[^0-9]/g, "");
+    return parseFloat(`${intPart}.${fracPart}`) || 0;
+  }
+  return parseFloat(s.replace(/[^0-9-]/g, "")) || 0; // sonst alle Trenner = Tausender
+}
+
 // Hypothek: deutsche Annuitaet (Zins + anfaengliche Tilgung), Restschuld seit Finanzierungsbeginn
 export function monthsSince(start: string): number {
   if (!start) return 0;

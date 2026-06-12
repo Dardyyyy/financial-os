@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
-import { Holding, Currency, loadHoldings, saveHoldings, getFxMap, loadSettings, saveSettings, fmt, fmt2, usd, uid, convertCur } from "../lib/store";
+import { Holding, Currency, loadHoldings, saveHoldings, getFxMap, loadSettings, saveSettings, fmt, fmt2, usd, uid, convertCur, parseAmount} from "../lib/store";
 import CountUp from "./CountUp";
 import CurrencySelect from "./CurrencySelect";
 
@@ -105,7 +105,7 @@ export default function Portfolio() {
   };
 
   const addPosition = () => {
-    const sh = parseFloat(shares.replace(",", ".")); const bp = parseFloat(buy.replace(",", "."));
+    const sh = parseAmount(shares); const bp = parseAmount(buy);
     if (!picked || isNaN(sh) || isNaN(bp)) return;
     persist([...holds, {
       id: uid(), ticker: picked.symbol, name: picked.name, shares: sh, buyPrice: bp, lastPrice: bp,
@@ -153,7 +153,7 @@ export default function Portfolio() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <input className="input num w-24 text-right py-1.5" defaultValue={r.lastPrice} onBlur={e => updatePrice(r.id, parseFloat(e.target.value.replace(",", ".")) || r.lastPrice)} />
+                  <input className="input num w-24 text-right py-1.5" defaultValue={r.lastPrice} onBlur={e => updatePrice(r.id, parseAmount(e.target.value) || r.lastPrice)} />
                   <div className="text-right w-28"><div className="num font-medium">{fmt(r.valueMain, main)}</div><div className={`num text-xs ${r.pl >= 0 ? "text-mint" : "text-bad"}`}>{r.pl >= 0 ? "+" : ""}{r.plPct.toFixed(1)}%</div></div>
                   <button onClick={() => remove(r.id)} className="x-btn">✕</button>
                 </div>

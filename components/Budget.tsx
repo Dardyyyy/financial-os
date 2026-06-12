@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Legend } from "recharts";
-import { BudgetData, Currency, loadBudget, saveBudget, loadSettings, saveSettings, fmt, fmt2, uid } from "../lib/store";
+import { BudgetData, Currency, loadBudget, saveBudget, loadSettings, saveSettings, fmt, fmt2, uid, parseAmount} from "../lib/store";
 import CountUp from "./CountUp";
 import CurrencySelect from "./CurrencySelect";
 
@@ -49,10 +49,10 @@ export default function Budget() {
   const minReserve = Math.min(...months.map(m => m.reserve), 0);
   const startpolster = Math.max(0, Math.ceil(-minReserve / 50) * 50);  // empfohlenes Startpolster, auf 50 gerundet
 
-  const addFixed = () => { const a = parseFloat(fAmt.replace(",", ".")); if (!fName.trim() || isNaN(a)) return; persist({ ...data, fixed: [...data.fixed, { id: uid(), name: fName.trim(), amount: a }] }); setFName(""); setFAmt(""); };
+  const addFixed = () => { const a = parseAmount(fAmt); if (!fName.trim() || !a) return; persist({ ...data, fixed: [...data.fixed, { id: uid(), name: fName.trim(), amount: a }] }); setFName(""); setFAmt(""); };
   const editFixed = (id: string, amount: number) => persist({ ...data, fixed: data.fixed.map(f => f.id === id ? { ...f, amount } : f) });
   const rmFixed = (id: string) => persist({ ...data, fixed: data.fixed.filter(f => f.id !== id) });
-  const addOne = () => { const a = parseFloat(oAmt.replace(",", ".")); if (!oName.trim() || isNaN(a)) return; persist({ ...data, oneTime: [...data.oneTime, { id: uid(), name: oName.trim(), amount: a, month: oMonth }] }); setOName(""); setOAmt(""); };
+  const addOne = () => { const a = parseAmount(oAmt); if (!oName.trim() || !a) return; persist({ ...data, oneTime: [...data.oneTime, { id: uid(), name: oName.trim(), amount: a, month: oMonth }] }); setOName(""); setOAmt(""); };
   const rmOne = (id: string) => persist({ ...data, oneTime: data.oneTime.filter(o => o.id !== id) });
 
   return (
@@ -129,14 +129,14 @@ export default function Budget() {
           <div className="font-semibold display">Einkommen & Fixkosten</div>
           <div>
             <div className="text-xs text-muted mb-1">Netto-Einkommen / Monat</div>
-            <input className="input num" value={data.income} onChange={e => persist({ ...data, income: parseFloat(e.target.value.replace(",", ".")) || 0 })} />
+            <input className="input num" value={data.income} onChange={e => persist({ ...data, income: parseAmount(e.target.value) })} />
           </div>
           <div className="space-y-2">
             {data.fixed.map(f => (
               <div key={f.id} className="flex items-center justify-between gap-2 border-b border-line/40 pb-2">
                 <span className="text-sm truncate">{f.name}</span>
                 <div className="flex items-center gap-2">
-                  <input className="input num w-24 text-right py-1.5" defaultValue={f.amount} onBlur={e => editFixed(f.id, parseFloat(e.target.value.replace(",", ".")) || 0)} />
+                  <input className="input num w-24 text-right py-1.5" defaultValue={f.amount} onBlur={e => editFixed(f.id, parseAmount(e.target.value))} />
                   <span className="text-xs text-muted">{sym}</span>
                   <button onClick={() => rmFixed(f.id)} className="x-btn">✕</button>
                 </div>

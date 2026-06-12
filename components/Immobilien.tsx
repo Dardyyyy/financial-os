@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Currency, Goal, Asset, fmt, convertCur, getFxMap, loadSettings, loadGoals, saveGoals, loadAssets, saveAssets, uid } from "../lib/store";
+import { Currency, Goal, Asset, fmt, convertCur, getFxMap, loadSettings, loadGoals, saveGoals, loadAssets, saveAssets, uid, parseAmount } from "../lib/store";
 import CurrencySelect from "./CurrencySelect";
 
 const GREST: Record<string, number> = {
@@ -14,7 +14,7 @@ const KANTON: Record<string, number> = {
 };
 
 type Land = "DE" | "CH" | "VS";
-const num = (s: string) => { const c = s.replace(/[^0-9.,]/g, "").replace(/\./g, "").replace(",", "."); return parseFloat(c) || 0; };
+const num = (s: string) => parseAmount(s);
 
 export default function Immobilien() {
   const [fxMap, setFxMap] = useState<Record<string, number>>({ EUR: 1, USD: 0.92, CHF: 1.05 });
@@ -163,9 +163,10 @@ export default function Immobilien() {
               <input className="input num flex-1" value={price} onChange={e => setPrice(e.target.value)} />
               <CurrencySelect value={cur} onChange={setCur} label="" />
             </div>
+            <div className="text-[10px] text-muted mt-1 num">= {fmt(num(price), cur)}</div>
           </Field>
-          <Field label="Eigenkapital"><input className="input num" value={equity} onChange={e => setEquity(e.target.value)} /></Field>
-          <Field label="Brutto-Jahreseinkommen (CHF, für CH)"><input className="input num" value={income} onChange={e => setIncome(e.target.value)} /></Field>
+          <Field label="Eigenkapital"><input className="input num" value={equity} onChange={e => setEquity(e.target.value)} /><div className="text-[10px] text-muted mt-1 num">= {fmt(num(equity), cur)}</div></Field>
+          <Field label="Brutto-Jahreseinkommen (CHF, für CH)"><input className="input num" value={income} onChange={e => setIncome(e.target.value)} /><div className="text-[10px] text-muted mt-1 num">= {fmt(num(income), "CHF")}</div></Field>
         </div>
       </div>
 

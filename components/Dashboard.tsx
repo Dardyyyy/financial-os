@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, AreaChart, Area } from "recharts";
-import { Tx, Currency, Asset, Holding, BudgetData, Goal, loadTransactions, saveTransactions, loadAssets, loadHoldings, loadBudget, loadGoals, loadSettings, getFxMap, eur, eur2, money, fmt, convertCur, mortgageCalc, uid, Snapshot, loadSnapshots, saveSnapshots, upsertSnapshot } from "../lib/store";
+import { Tx, Currency, Asset, Holding, BudgetData, Goal, loadTransactions, saveTransactions, loadAssets, loadHoldings, loadBudget, loadGoals, loadSettings, getFxMap, eur, eur2, money, fmt, convertCur, mortgageCalc, uid, Snapshot, loadSnapshots, saveSnapshots, upsertSnapshot, parseAmount} from "../lib/store";
 import CountUp from "./CountUp";
 
 const CURRENCIES: Currency[] = ["EUR", "USD", "CHF"];
@@ -98,9 +98,9 @@ export default function Dashboard() {
   const palette = ["#F5B544", "#5EEAD4", "#A78BFA", "#FB7185", "#60A5FA", "#FBBF24"];
 
   const addTx = () => {
-    const raw = parseFloat(amount.replace(",", "."));
+    const raw = parseAmount(amount);
     const cat = category.trim() || "Sonstiges";
-    if (!desc.trim() || isNaN(raw)) return;
+    if (!desc.trim() || !raw) return;
     const signed = txType === "income" ? Math.abs(raw) : -Math.abs(raw);
     const next = [{ id: uid(), date: new Date().toISOString().slice(0, 10), desc: desc.trim(), category: cat, amount: signed, currency: curr }, ...txs];
     setTxs(next); saveTransactions(next);

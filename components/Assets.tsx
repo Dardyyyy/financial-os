@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
-import { Asset, AssetKind, Mortgage, Currency, loadAssets, saveAssets, loadHoldings, getFxMap, loadSettings, saveSettings, fmt, fmt2, uid, convertCur, mortgageCalc } from "../lib/store";
+import { Asset, AssetKind, Mortgage, Currency, loadAssets, saveAssets, loadHoldings, getFxMap, loadSettings, saveSettings, fmt, fmt2, uid, convertCur, mortgageCalc, parseAmount} from "../lib/store";
 import CountUp from "./CountUp";
 import CurrencySelect from "./CurrencySelect";
 
@@ -67,7 +67,7 @@ export default function Assets() {
     return slices;
   }, [assets, depot, fxMap, main]);
 
-  const num = (s: string) => parseFloat(s.replace(",", ".")) || 0;
+  const num = (s: string) => parseAmount(s);
   const resetForm = () => { setName(""); setVal(""); setDebt(""); setPrice(""); setEquity(""); setRate("3.8"); setTilgung("2.0"); setStart(""); };
 
   const add = () => {

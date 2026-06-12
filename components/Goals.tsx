@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Goal, GoalTimeframe, Currency, loadGoals, saveGoals, loadSettings, fmt, uid, periodKey, rolloverGoals, RESET_LABEL } from "../lib/store";
+import { Goal, GoalTimeframe, Currency, loadGoals, saveGoals, loadSettings, fmt, uid, periodKey, rolloverGoals, RESET_LABEL, parseAmount} from "../lib/store";
 
 const TF: { id: GoalTimeframe; label: string; color: string }[] = [
   { id: "tag",   label: "Heute / Täglich", color: "#5EEAD4" },
@@ -26,7 +26,7 @@ export default function Goals() {
     loadSettings().then(s => setCur(s.mainCurrency));
   }, []);
   const persist = (g: Goal[]) => { setGoals(g); saveGoals(g); };
-  const num = (s: string) => parseFloat(s.replace(",", ".")) || 0;
+  const num = (s: string) => parseAmount(s);
 
   const add = () => {
     if (!title.trim()) return;
