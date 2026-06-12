@@ -49,25 +49,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   const currency: "EUR" | "CHF" = isCH ? "CHF" : "EUR";
 
   let html = "";
-  try {
+  let viaReader = false;
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+    "Accept": "text/html,application/xhtml+xml",
+  };
+  const fetchText = async (target: string, hdrs: Record<string, string>): Promise<{ ok: boolean; status: number; text: string }> => {
     const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 9000);
-    const r = await fetch(url, {
-      signal: ctrl.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-        "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
-        "Accept": "text/html,application/xhtml+xml",
-      },
-    });
-    clearTimeout(to);
-    if (!r.ok) {
-      res.status(200).json({ ok: false, country, currency, source: host, warning: "Portal hat den Zugriff blockiert (Status " + r.status + "). Bitte Werte manuell eintragen." });
-      return;
+    const to = setTimeout(() => ctrl.abort(), 11000);
+    try {
+      const r = await fetch(target, { signal: ctrl.signal, headers: hdrs });
+      clearTimeout(to);
+      const text = r.ok ? await r.text() : "";
+      return { ok: r.ok, status: r.status, text };
+    } catch {
+      clearTimeout(to);
+      return { ok: false, status: 0, text: "" };
     }
-    html = await r.text();
-  } catch (e: any) {
-    res.status(200).json({ ok: false, country, currency, source: host, warning: "Konnte das Inserat nicht laden (Timeout/Blockade). Bitte Werte manuell eintragen." });
+  };
+
+  // 1) Direkt versuchen
+  const direct = await fetchText(url, headers);
+  html = direct.text;
+  // 2) Falls blockiert/leer: ueber Reader-Proxy (umgeht viele Bot-Sperren, liefert lesbaren Text)
+  if (!direct.ok || !html) {
+    const reader = await fetchText("https://r.jina.ai/" + url, { "Accept": "text/plain" });
+    if (reader.ok && reader.text) { html = reader.text; viaReader = true; }
+  }
+  if (!html) {
+    res.status(200).json({ ok: false, country, currency, source: host, warning: "Portal hat den Zugriff blockiert (Status " + direct.status + "). Bitte unten den Inseratstext einfuegen oder Werte manuell eintragen." });
     return;
   }
 
@@ -111,11 +122,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   const text = (title + " " + ogDesc + " " + html.replace(/<[^>]+>/g, " ")).replace(/&nbsp;/g, " ");
   if (!price) {
     // CHF 1'250'000  /  1.250.000 EUR  /  1 250 000
-    const pm = text.match(/(?:CHF|EUR|\u20AC)\s*([0-9][0-9'.,\s]{4,})/i) || text.match(/([0-9][0-9'.,\s]{5,})\s*(?:CHF|EUR|\u20AC)/i);
+    const pm = text.match(/(?:CHF|EUR|\u20AC|Fr\.?)\s*([0-9][0-9'.,]{4,})/i) || text.match(/([0-9][0-9'.,]{5,})\s*(?:CHF|EUR|\u20AC)/i);
     if (pm) price = num(pm[1]);
   }
   if (!size) {
-    const sm = text.match(/([0-9]{2,4})\s*m(?:2|\u00B2)\b/i);
+    const sm = text.match(/([0-9]{2,4})\s*m(?:2|\u00B2)/i);
     if (sm) size = num(sm[1]);
   }
   const rm = text.match(/([0-9](?:[.,][05])?)\s*(?:Zimmer|Zi\.|rooms?)/i);
@@ -129,7 +140,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     rooms: rooms || undefined,
     location: location || undefined,
     title: title || undefined,
-    currency, country, source: host,
-    warning: ok ? undefined : "Preis nicht automatisch gefunden - bitte manuell eintragen (Portal rendert evtl. per JavaScript).",
+    currency, country, source: host, viaReader,
+    warning: ok ? undefined : "Preis nicht automatisch gefunden - bitte unten den Inseratstext einfuegen (kopieren + einsetzen) oder Werte manuell eintragen.",
   });
 }

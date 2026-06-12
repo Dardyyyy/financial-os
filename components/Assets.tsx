@@ -112,7 +112,7 @@ export default function Assets() {
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-xl">{k.icon}</span>
                       <div className="min-w-0">
-                        <div className="font-semibold truncate">{a.name}</div>
+                        <div className="font-semibold break-words min-w-0">{a.name}</div>
                         <div className="text-[11px]" style={{ color: k.color }}>{k.label}</div>
                       </div>
                     </div>

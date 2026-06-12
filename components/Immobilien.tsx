@@ -23,6 +23,9 @@ export default function Immobilien() {
   const [loadMsg, setLoadMsg] = useState("");
   const [loc, setLoc] = useState("");
   const [actMsg, setActMsg] = useState("");
+  const [paste, setPaste] = useState("");
+  const [showPaste, setShowPaste] = useState(false);
+  const [imgBusy, setImgBusy] = useState(false);
 
   const [land, setLand] = useState<Land>("VS");
   const [price, setPrice] = useState("750000");
@@ -60,6 +63,67 @@ export default function Immobilien() {
       setLoadMsg("Konnte das Inserat nicht laden.");
     }
     setLoading(false);
+  };
+
+  const onImage = async (file: File | undefined | null) => {
+    if (!file) return;
+    setImgBusy(true); setLoadMsg("Bild wird ausgewertet…");
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result));
+        fr.onerror = () => reject(new Error("read"));
+        fr.readAsDataURL(file);
+      });
+      // herunterskalieren (max 1400px Breite) -> kleines JPEG
+      const small: string = await new Promise((resolve) => {
+        const im = new Image();
+        im.onload = () => {
+          const maxW = 1400; const scale = Math.min(1, maxW / im.width);
+          const c = document.createElement("canvas");
+          c.width = Math.round(im.width * scale); c.height = Math.round(im.height * scale);
+          const ctx = c.getContext("2d"); if (ctx) ctx.drawImage(im, 0, 0, c.width, c.height);
+          resolve(c.toDataURL("image/jpeg", 0.82));
+        };
+        im.onerror = () => resolve(dataUrl);
+        im.src = dataUrl;
+      });
+      const r = await fetch("/api/immo-image", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ image: small, media_type: "image/jpeg" }),
+      }).then(x => x.json());
+      if (r.currency) setCur(r.currency);
+      if (r.country === "CH") setLand("CH"); else if (r.country === "DE") setLand("DE");
+      if (r.price) setPrice(String(r.price));
+      if (r.location) setLoc(String(r.location).slice(0, 60));
+      setLoadMsg(r.ok
+        ? `Aus Bild gelesen: ${fmt(r.price, r.currency || cur)}${r.size ? " - " + r.size + " m²" : ""}${r.location ? " - " + r.location : ""}`
+        : (r.warning || "Im Bild nichts erkannt."));
+    } catch {
+      setLoadMsg("Bild konnte nicht ausgewertet werden.");
+    }
+    setImgBusy(false);
+  };
+
+  const parseFromText = () => {
+    const t = paste.replace(/\u00A0/g, " ");
+    if (!t.trim()) return;
+    const isCH = /\bCHF\b|\bFr\.?\b/i.test(t) && !/\u20AC|\bEUR\b/i.test(t);
+    const ccy: Currency = isCH ? "CHF" : (/\u20AC|\bEUR\b/i.test(t) ? "EUR" : cur);
+    // alle waehrungsnahen Zahlen sammeln, groesste = Preis
+    const cands: number[] = [];
+    const re = /(?:CHF|EUR|\u20AC|Fr\.?)\s*([0-9][0-9'\u2019.,\s]{3,})|([0-9][0-9'\u2019.,]{4,})\s*(?:CHF|EUR|\u20AC|\.[\u2013-])/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t))) { const raw = (m[1] || m[2] || "").replace(/[\s\u00A0]/g, ""); const v = num(raw); if (v >= 1000) cands.push(v); }
+    const p = cands.length ? Math.max(...cands) : 0;
+    const sm = t.match(/([0-9]{2,4})\s*m(?:2|\u00B2)/i);
+    const plz = t.match(/\b([0-9]{4,5})\s+([A-Za-z\u00C0-\u017F.\- ]{2,30})/);
+    if (p) setPrice(String(p));
+    if (ccy) setCur(ccy);
+    if (plz) setLoc(`${plz[1]} ${plz[2].trim()}`.slice(0, 60));
+    setLoadMsg(p
+      ? `Aus Text gelesen: ${fmt(p, ccy)}${sm ? " - " + sm[1] + " m²" : ""}${plz ? " - " + plz[1] + " " + plz[2].trim() : ""}`
+      : "Im Text keinen Preis gefunden - bitte Kaufpreis manuell eintragen.");
   };
 
   const setBl = (b: string) => { setBundesland(b); setGrestPct(String(GREST[b])); };
@@ -143,8 +207,19 @@ export default function Immobilien() {
           <input className="input flex-1 min-w-[200px]" placeholder="https://www.homegate.ch/... oder immobilienscout24.de/..." value={link} onChange={e => setLink(e.target.value)} onKeyDown={e => e.key === "Enter" && loadInserat()} />
           <button className="btn" onClick={loadInserat} disabled={loading || !link.trim()}>{loading ? "Lade..." : "Laden"}</button>
         </div>
+        <label className={`btn-ghost rounded-xl px-4 py-2 text-sm cursor-pointer inline-flex items-center gap-2 w-fit ${imgBusy ? "opacity-60 pointer-events-none" : ""}`}>
+          {imgBusy ? "Lese Bild…" : "📷 Screenshot/Foto auswerten"}
+          <input type="file" accept="image/*" className="hidden" onChange={e => onImage(e.target.files?.[0])} />
+        </label>
         {loadMsg && <div className="text-xs text-muted">{loadMsg}</div>}
-        <div className="text-[11px] text-muted">Viele Portale blockieren automatische Zugriffe oder laden per JavaScript. Klappt es nicht, trag den Preis einfach unten manuell ein.</div>
+        <div className="text-[11px] text-muted">Viele Portale blockieren automatische Zugriffe. Klappt der Link nicht, nutze „Text einfügen" — das funktioniert immer.</div>
+        <button onClick={() => setShowPaste(v => !v)} className="text-[11px] text-mint hover:underline text-left">{showPaste ? "Texteingabe ausblenden" : "Stattdessen Inseratstext einfügen"}</button>
+        {showPaste && (
+          <div className="space-y-2 pt-1">
+            <textarea className="input" rows={4} placeholder="Inserat öffnen, Beschreibung/Preis markieren, kopieren und hier einfügen…" value={paste} onChange={e => setPaste(e.target.value)} />
+            <button className="btn" onClick={parseFromText} disabled={!paste.trim()}>Aus Text lesen</button>
+          </div>
+        )}
       </div>
 
       {/* Eckdaten */}
