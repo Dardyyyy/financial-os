@@ -76,7 +76,7 @@ export default function InvestmentPlanner() {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        <div className="text-xs text-muted mt-3">Zinseszins, monatliche Verzinsung. Reine Modellrechnung — keine Anlageberatung.</div>
+        
       </div>
     </div>
   );

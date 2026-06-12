@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import Markdown from "./Markdown";
 import {
-  SavedNote, ChatSession, loadChats, saveChats, loadNotes, saveNotes,
-  loadTransactions, loadHoldings, uid, eur,
+  SavedNote, ChatSession, Goal, loadChats, saveChats, loadNotes, saveNotes,
+  loadGoals, saveGoals, loadTransactions, loadHoldings, uid, eur,
 } from "../lib/store";
 
 const MODES = {
@@ -78,6 +79,12 @@ export default function ExpertAdvisor() {
 
   const pin = (text: string) => { const n = [{ id: uid(), mode: MODES[activeMode].label, label: text.slice(0, 60), text, ts: Date.now() }, ...notes]; setNotes(n); saveNotes(n); };
   const unpin = (id: string) => { const n = notes.filter(x => x.id !== id); setNotes(n); saveNotes(n); };
+  const [goalMsg, setGoalMsg] = useState("");
+  const asGoal = async (text: string) => {
+    const g: Goal = { id: uid(), title: text.split("\n")[0].slice(0, 90), timeframe: "woche", category: MODES[activeMode].label, done: false, createdTs: Date.now() };
+    const existing = await loadGoals(); await saveGoals([g, ...existing]);
+    setGoalMsg("Als Ziel gespeichert — im Tab „Ziele“."); setTimeout(() => setGoalMsg(""), 2500);
+  };
 
   const m = MODES[activeMode];
 
@@ -98,7 +105,7 @@ export default function ExpertAdvisor() {
                 {count > 0 && <span className="num text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: `${MODES[id].color}33`, color: MODES[id].color }}>{count}</span>}
               </div>
               <div className="font-semibold text-sm mt-1" style={act ? { color: MODES[id].color } : {}}>{MODES[id].label}</div>
-              <div className="text-[10px] text-muted">eigener Verlauf</div>
+              
             </button>
           );
         })}
@@ -124,7 +131,7 @@ export default function ExpertAdvisor() {
           {notes.map(n => (
             <div key={n.id} className="flex items-start justify-between gap-3 border-b border-line/40 pb-2">
               <div className="min-w-0"><div className="text-[11px] text-gold">{n.mode} · {new Date(n.ts).toLocaleDateString("de-DE")}</div><div className="text-sm whitespace-pre-wrap">{n.text}</div></div>
-              <button onClick={() => unpin(n.id)} className="text-muted hover:text-bad text-sm shrink-0">✕</button>
+              <button onClick={() => unpin(n.id)} className="x-btn">✕</button>
             </div>
           ))}
         </div>
@@ -133,21 +140,24 @@ export default function ExpertAdvisor() {
       <div className="card card-hl flex flex-col" style={{ height: "54vh", minHeight: 380 }}>
         <div className="flex items-center gap-2 px-5 pt-4 pb-2 border-b border-line/50">
           <span>{m.icon}</span><b style={{ color: m.color }}>{m.label}-Berater</b>
-          <span className="text-muted text-xs">· {active.country === "DE" ? "Deutschland" : "Schweiz"} · kennt deine Finanzdaten</span>
+          <span className="text-muted text-xs">· {active.country === "DE" ? "Deutschland" : "Schweiz"}</span>
         </div>
         <div ref={boxRef} className="flex-1 overflow-y-auto p-5 space-y-4">
           {active.messages.length === 0 && <div className="text-muted text-sm max-w-md">Frag den <b style={{ color: m.color }}>{m.label}-Berater</b> etwas. Jeder Bereich hat seinen eigenen Verlauf — wechselst du oben den Bereich, siehst du dessen eigene Unterhaltung.</div>}
           {active.messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className="max-w-[85%]">
-                <div className={`rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${msg.role === "user" ? "text-ink font-medium" : "bg-panel2 border border-line"}`} style={msg.role === "user" ? { background: m.color } : {}}>{msg.content}</div>
-                {msg.role === "assistant" && <button onClick={() => pin(msg.content)} className="text-[11px] text-muted hover:text-gold mt-1 ml-1">{"📌"} Speichern</button>}
+              <div className="max-w-[88%]">
+                {msg.role === "user"
+                  ? <div className="rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed text-ink font-medium" style={{ background: m.color }}>{msg.content}</div>
+                  : <div className="rounded-2xl px-4 py-3 bg-panel2/70 border border-line"><Markdown text={msg.content} accent={m.color} /></div>}
+                {msg.role === "assistant" && <div className="flex gap-3 mt-1 ml-1"><button onClick={() => pin(msg.content)} className="text-[11px] text-muted hover:text-gold">{"📌"} Speichern</button><button onClick={() => asGoal(msg.content)} className="text-[11px] text-muted hover:text-mint">{"🎯"} Als Ziel</button></div>}
               </div>
             </div>
           ))}
           {loading && <div className="text-muted text-sm flex items-center gap-2"><span className="w-2 h-2 rounded-full animate-pulse" style={{ background: m.color }} />denkt nach…</div>}
         </div>
         <div className="border-t border-line/60 p-4">
+          {goalMsg && <div className="text-mint text-xs mb-2">{goalMsg}</div>}
           {error && <div className="text-bad text-xs mb-2">⚠ {error}</div>}
           <div className="flex gap-2">
             <input className="input" placeholder={`Frage an den ${m.label}-Berater…`} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} />

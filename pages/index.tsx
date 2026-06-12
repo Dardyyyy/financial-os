@@ -5,7 +5,9 @@ import ExpertAdvisor from "../components/ExpertAdvisor";
 import Portfolio from "../components/Portfolio";
 import Market from "../components/Market";
 import Budget from "../components/Budget";
+import Immobilien from "../components/Immobilien";
 import Assets from "../components/Assets";
+import Goals from "../components/Goals";
 import Ticker from "../components/Ticker";
 import Logo from "../components/Logo";
 import { cloudEnabled } from "../lib/store";
@@ -16,7 +18,9 @@ const TABS = [
   { id: "market", label: "Markt", icon: "◮" },
   { id: "planner", label: "Planer", icon: "◭" },
   { id: "budget", label: "Budget", icon: "▤" },
+  { id: "immo", label: "Immobilien", icon: "⌂" },
   { id: "assets", label: "Vermögen", icon: "◰" },
+  { id: "goals", label: "Ziele", icon: "◎" },
   { id: "advisor", label: "Berater", icon: "✦" },
   { id: "portfolio", label: "Portfolio", icon: "◈" },
 ] as const;
@@ -36,7 +40,9 @@ function Shell() {
     market: "Märkte & Top Mover",
     planner: "Was dein Geld in Zukunft wird",
     budget: "Budget & Liquidität",
+    immo: "Immobilien-Rechner DE vs. CH",
     assets: "Vermögen & Sachwerte",
+    goals: "Deine Ziele",
     advisor: "Frag deinen Berater",
     portfolio: "Dein Depot in Echtzeit",
   };
@@ -86,7 +92,9 @@ function Shell() {
           {tab === "market" && <Market />}
           {tab === "planner" && <InvestmentPlanner />}
           {tab === "budget" && <Budget />}
+          {tab === "immo" && <Immobilien />}
           {tab === "assets" && <Assets />}
+          {tab === "goals" && <Goals />}
           {tab === "advisor" && <ExpertAdvisor />}
           {tab === "portfolio" && <Portfolio />}
         </main>

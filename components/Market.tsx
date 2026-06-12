@@ -140,7 +140,7 @@ export default function Market() {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className={`num text-sm ${m.change >= 0 ? "text-mint" : "text-bad"}`}>{m.change >= 0 ? "▲" : "▼"} {Math.abs(m.change).toFixed(2)}%</span>
-                  <button onClick={() => removeTicker(m.sym)} className="text-muted hover:text-bad">✕</button>
+                  <button onClick={() => removeTicker(m.sym)} className="x-btn">✕</button>
                 </div>
               </div>
             ))}
@@ -231,7 +231,7 @@ export default function Market() {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        <div className="text-xs text-muted">Zinseszins-Modellrechnung mit deiner angenommenen Rendite — keine Vorhersage, keine Anlageberatung. {cat === "stock" && "Stückzahl auf Basis des Live-Kurses (USD→EUR)."}</div>
+        
       </div>
     </div>
   );
