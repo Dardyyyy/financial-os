@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Currency, Goal, Asset, fmt, convertCur, getFxMap, loadSettings, loadGoals, saveGoals, loadAssets, saveAssets, uid, parseAmount } from "../lib/store";
 import CurrencySelect from "./CurrencySelect";
+import Markdown from "./Markdown";
 
 const GREST: Record<string, number> = {
   "Baden-Württemberg": 5.0, "Bayern": 3.5, "Berlin": 6.0, "Brandenburg": 6.5, "Bremen": 5.0,
@@ -26,6 +27,9 @@ export default function Immobilien() {
   const [paste, setPaste] = useState("");
   const [showPaste, setShowPaste] = useState(false);
   const [imgBusy, setImgBusy] = useState(false);
+  const [size, setSize] = useState("");
+  const [opinion, setOpinion] = useState("");
+  const [opBusy, setOpBusy] = useState(false);
 
   const [land, setLand] = useState<Land>("VS");
   const [price, setPrice] = useState("750000");
@@ -56,6 +60,7 @@ export default function Immobilien() {
       if (r.country === "CH") setLand("CH"); else if (r.country === "DE") setLand("DE");
       if (r.price) setPrice(String(r.price));
       if (r.location) setLoc(String(r.location)); else if (r.title) setLoc(String(r.title).slice(0, 60));
+      if (r.size) setSize(String(r.size));
       setLoadMsg(r.ok
         ? `Gefunden: ${r.title ? r.title + " - " : ""}${r.price ? fmt(r.price, r.currency) : ""}${r.size ? " - " + r.size + " m²" : ""}${r.location ? " - " + r.location : ""}`
         : (r.warning || "Nichts gefunden."));
@@ -96,6 +101,7 @@ export default function Immobilien() {
       if (r.country === "CH") setLand("CH"); else if (r.country === "DE") setLand("DE");
       if (r.price) setPrice(String(r.price));
       if (r.location) setLoc(String(r.location).slice(0, 60));
+      if (r.size) setSize(String(r.size));
       setLoadMsg(r.ok
         ? `Aus Bild gelesen: ${fmt(r.price, r.currency || cur)}${r.size ? " - " + r.size + " m²" : ""}${r.location ? " - " + r.location : ""}`
         : (r.warning || "Im Bild nichts erkannt."));
@@ -121,6 +127,7 @@ export default function Immobilien() {
     if (p) setPrice(String(p));
     if (ccy) setCur(ccy);
     if (plz) setLoc(`${plz[1]} ${plz[2].trim()}`.slice(0, 60));
+    if (sm) setSize(sm[1]);
     setLoadMsg(p
       ? `Aus Text gelesen: ${fmt(p, ccy)}${sm ? " - " + sm[1] + " m²" : ""}${plz ? " - " + plz[1] + " " + plz[2].trim() : ""}`
       : "Im Text keinen Preis gefunden - bitte Kaufpreis manuell eintragen.");
@@ -146,6 +153,31 @@ export default function Immobilien() {
     };
     const ex = await loadGoals(); await saveGoals([g, ...ex]);
     flash(`Sparziel angelegt: ${fmt(g.target!, ccy)} Eigenkapital (Stand ${fmt(g.current!, ccy)}). Im Tab "Ziele".`);
+  };
+
+  const getOpinion = async () => {
+    setOpBusy(true); setOpinion("");
+    const p = num(price); const sz = num(size);
+    const ppsm = sz > 0 ? Math.round(p / sz) : 0;
+    const facts: string[] = [
+      `Land/Markt: ${land === "CH" ? "Schweiz" : land === "DE" ? "Deutschland" : "Vergleich DE/CH"}`,
+      `Lage: ${loc || "unbekannt"}`,
+      `Kaufpreis: ${fmt(p, cur)}`,
+      sz > 0 ? `Wohnflaeche: ${sz} m2` : "Wohnflaeche: unbekannt",
+      ppsm > 0 ? `Preis pro m2: ${fmt(ppsm, cur)}` : "",
+      `Eigenkapital: ${fmt(num(equity), cur)}`,
+    ];
+    if (land === "DE" || land === "VS") facts.push(`DE-Finanzierung: Kaufnebenkosten ${fmt(de.neben, "EUR")}, Gesamtkosten ${fmt(de.gesamt, "EUR")}, Darlehen ${fmt(de.darlehen, "EUR")}, Monatsrate ${fmt(de.rate, "EUR")}, Beleihung ${de.beleihung.toFixed(0)}%`);
+    if (land === "CH" || land === "VS") facts.push(`CH-Finanzierung: Mindest-EK ${fmt(ch.minEK, "CHF")} (vorhanden: ${ch.ekOK ? "ja" : "nein"}), Belehnung ${ch.belehnung.toFixed(0)}%, Tragbarkeit ${ch.quote.toFixed(0)}% (Grenze 33%), kalk. Kosten/Jahr ${fmt(ch.kostenJahr, "CHF")}`);
+    const system = "Du bist ein nuechterner, erfahrener Immobilien- und Finanzberater fuer den Raum DACH. Bewerte ehrlich und ohne Verkaufssprache. Erfinde KEINE exakten Marktpreise - wenn du den lokalen Markt nicht sicher kennst, sage das offen und ordne nur grob ein. Antworte auf Deutsch, kompakt, mit Markdown-Ueberschriften und kurzen Stichpunkten.";
+    const user = `Bewerte diese Immobilie anhand der Daten:\n\n${facts.filter(Boolean).join("\n")}\n\nGib mir:\n## Preis-Einordnung (ist der Preis pro m2 fuer die Lage eher guenstig, fair oder teuer? mit Unsicherheitshinweis)\n## Pro\n## Contra / Risiken\n## Finanzielle Tragbarkeit (anhand der Zahlen oben)\n## Fazit (1-2 Saetze: lohnt es sich eher, eher nicht, oder wovon haengt es ab)`;
+    try {
+      const r = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ system, messages: [{ role: "user", content: user }] }) }).then(x => x.json());
+      setOpinion(r.text || r.error || "Keine Antwort erhalten.");
+    } catch {
+      setOpinion("Einschaetzung konnte nicht geladen werden.");
+    }
+    setOpBusy(false);
   };
 
   const assetFrom = async (land2: "DE" | "CH") => {
@@ -242,6 +274,7 @@ export default function Immobilien() {
           </Field>
           <Field label="Eigenkapital"><input className="input num" value={equity} onChange={e => setEquity(e.target.value)} /><div className="text-[10px] text-muted mt-1 num">= {fmt(num(equity), cur)}</div></Field>
           <Field label="Brutto-Jahreseinkommen (CHF, für CH)"><input className="input num" value={income} onChange={e => setIncome(e.target.value)} /><div className="text-[10px] text-muted mt-1 num">= {fmt(num(income), "CHF")}</div></Field>
+          <Field label="Wohnfläche (m², optional)"><input className="input num" value={size} onChange={e => setSize(e.target.value)} placeholder="z.B. 120" />{num(size) > 0 && num(price) > 0 && <div className="text-[10px] text-muted mt-1 num">= {fmt(Math.round(num(price) / num(size)), cur)} / m²</div>}</Field>
         </div>
       </div>
 
@@ -332,6 +365,19 @@ export default function Immobilien() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* KI-Einschaetzung */}
+      <div className="card card-hl p-6 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <div className="font-semibold display">Lohnt sich das? — Zweitmeinung</div>
+            <div className="text-xs text-muted">Ehrliche Einordnung zu Preis, Pro/Contra & Tragbarkeit auf Basis deiner Eingaben.</div>
+          </div>
+          <button className="btn" onClick={getOpinion} disabled={opBusy || !(num(price) > 0)}>{opBusy ? "Analysiere…" : "Einschätzung holen"}</button>
+        </div>
+        {opinion && <div className="rounded-xl bg-panel2/50 border border-line p-4"><Markdown text={opinion} accent="#F5B544" /></div>}
+        {opinion && <div className="text-[10px] text-muted">KI-Einschätzung ohne Gewähr — keine professionelle Bewertung. Für eine echte Bewertung Gutachter/Bank hinzuziehen.</div>}
       </div>
 
       <div className="text-[11px] text-muted px-1">Vereinfachte Schätzung. Steuersätze (Bundesland/Kanton), Bankregeln und Zinsen variieren. Im Vergleichsmodus wird der Preis über aktuelle Wechselkurse in EUR bzw. CHF umgerechnet.</div>
