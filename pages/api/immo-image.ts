@@ -3,18 +3,23 @@ import type { NextApiRequest, NextApiResponse } from "next";
 // Liest aus einem Inserat-Screenshot/Foto die Eckdaten per Anthropic Vision.
 // Bild wird als base64 (JPEG/PNG/WebP) im Body erwartet. Key nur serverseitig.
 
-export const config = { api: { bodyParser: { sizeLimit: "10mb" } } };
+export const config = { api: { bodyParser: { sizeLimit: "16mb" } } };
 
 const ENDPOINT = "https://api.anthropic.com/v1/messages";
 
 const PROMPT = [
-  "You are extracting structured data from a real-estate listing screenshot.",
-  "Return ONLY a compact JSON object, no markdown, no prose, with these keys:",
-  '{"price": number|null, "size": number|null, "rooms": number|null, "location": string|null, "currency": "EUR"|"CHF"|null, "country": "DE"|"CH"|null}',
-  "Rules: price is the purchase/sale price as an integer in the listing currency (ignore monthly rent, fees, or extra costs; pick the main asking price).",
-  "size is living area in square meters as a number. rooms is number of rooms.",
-  "location is postal code + city if visible. currency: CHF if Swiss (CHF/Fr.), else EUR.",
-  "country: CH for Swiss listings, DE for German listings. Use null for anything not clearly visible.",
+  "You are extracting structured data from one or more real-estate listing images (expose pages, energy certificate, photos).",
+  "Combine information across ALL provided images. Return ONLY a compact JSON object, no markdown, no prose, with these keys:",
+  '{"price": number|null, "size": number|null, "rooms": number|null, "location": string|null, "currency": "EUR"|"CHF"|null, "country": "DE"|"CH"|null, "yearBuilt": number|null, "heating": string|null, "energy": string|null, "pv": boolean|null, "condition": string|null}',
+  "Rules: price = purchase/sale price as integer in the listing currency (ignore monthly rent/fees; pick the main asking price).",
+  "size = living area in m2. rooms = number of rooms. location = postal code + city if visible.",
+  "currency: CHF if Swiss, else EUR. country: CH or DE.",
+  "yearBuilt = construction year (Baujahr) as a 4-digit number if visible.",
+  "heating = short German label of heating type if visible (e.g. 'Waermepumpe', 'Gas', 'Oel', 'Fernwaerme', 'Pellets').",
+  "energy = short German energy info if visible (e.g. energy class 'A+', or consumption like '85 kWh/m2a', or 'Energieklasse C').",
+  "pv = true if photovoltaic/solar is mentioned, false if clearly none, null if unknown.",
+  "condition = short German label of state if derivable (e.g. 'neuwertig', 'gepflegt', 'renovierungsbeduerftig', 'sanierungsbeduerftig').",
+  "Use null for anything not clearly visible. Do not guess.",
 ].join(" ");
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -24,11 +29,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!apiKey) return res.status(200).json({ ok: false, warning: "ANTHROPIC_API_KEY fehlt (in Vercel fuer Production eintragen)." });
 
   const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
-  const { image, media_type } = req.body as { image?: string; media_type?: string };
-  if (!image) return res.status(200).json({ ok: false, warning: "Kein Bild empfangen." });
+  const body = req.body as { image?: string; images?: string[]; media_type?: string };
+  const list = (body.images && body.images.length ? body.images : (body.image ? [body.image] : [])).slice(0, 6);
+  if (!list.length) return res.status(200).json({ ok: false, warning: "Kein Bild empfangen." });
 
-  const mt = (media_type || "image/jpeg").toLowerCase();
-  const data = image.includes(",") ? image.split(",").pop() as string : image; // data-URL-Prefix entfernen
+  const mt = (body.media_type || "image/jpeg").toLowerCase();
+  const imgBlocks = list.map((img) => ({
+    type: "image",
+    source: { type: "base64", media_type: mt, data: img.includes(",") ? (img.split(",").pop() as string) : img },
+  }));
 
   try {
     const r = await fetch(ENDPOINT, {
@@ -36,14 +45,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model,
-        max_tokens: 400,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mt, data } },
-            { type: "text", text: PROMPT },
-          ],
-        }],
+        max_tokens: 600,
+        messages: [{ role: "user", content: [...imgBlocks, { type: "text", text: PROMPT }] }],
       }),
     });
     const out = await r.json();
@@ -67,7 +70,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       location: parsed.location || undefined,
       currency: parsed.currency === "CHF" || parsed.currency === "EUR" ? parsed.currency : undefined,
       country: parsed.country === "CH" || parsed.country === "DE" ? parsed.country : undefined,
-      warning: ok ? undefined : "Im Bild keinen Preis erkannt - bitte Werte manuell eintragen.",
+      yearBuilt: typeof parsed.yearBuilt === "number" ? parsed.yearBuilt : undefined,
+      heating: parsed.heating || undefined,
+      energy: parsed.energy || undefined,
+      pv: typeof parsed.pv === "boolean" ? parsed.pv : undefined,
+      condition: parsed.condition || undefined,
+      count: list.length,
+      warning: ok ? undefined : "Im Bild keinen Preis erkannt - bitte Werte manuell eintragen oder weitere Bilder hinzufuegen.",
     });
   } catch (e: any) {
     return res.status(200).json({ ok: false, warning: e?.message || "Serverfehler bei der Bildauswertung." });

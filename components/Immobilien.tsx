@@ -30,6 +30,13 @@ export default function Immobilien() {
   const [size, setSize] = useState("");
   const [opinion, setOpinion] = useState("");
   const [opBusy, setOpBusy] = useState(false);
+  const [yearBuilt, setYearBuilt] = useState("");
+  const [heating, setHeating] = useState("");
+  const [energy, setEnergy] = useState("");
+  const [condition, setCondition] = useState("");
+  const [pv, setPv] = useState(false);
+  const [purpose, setPurpose] = useState<"eigennutzung" | "invest">("eigennutzung");
+  const [rent, setRent] = useState("");
 
   const [land, setLand] = useState<Land>("VS");
   const [price, setPrice] = useState("750000");
@@ -70,43 +77,50 @@ export default function Immobilien() {
     setLoading(false);
   };
 
-  const onImage = async (file: File | undefined | null) => {
-    if (!file) return;
-    setImgBusy(true); setLoadMsg("Bild wird ausgewertet…");
+  const downscale = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("read"));
+    fr.onload = () => {
+      const im = new Image();
+      im.onload = () => {
+        const maxW = 1400; const scale = Math.min(1, maxW / im.width);
+        const c = document.createElement("canvas");
+        c.width = Math.round(im.width * scale); c.height = Math.round(im.height * scale);
+        const ctx = c.getContext("2d"); if (ctx) ctx.drawImage(im, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", 0.82));
+      };
+      im.onerror = () => resolve(String(fr.result));
+      im.src = String(fr.result);
+    };
+    fr.readAsDataURL(file);
+  });
+
+  const onImages = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    const arr = Array.from(files).slice(0, 6);
+    setImgBusy(true); setLoadMsg(`${arr.length} Bild(er) werden ausgewertet…`);
     try {
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(String(fr.result));
-        fr.onerror = () => reject(new Error("read"));
-        fr.readAsDataURL(file);
-      });
-      // herunterskalieren (max 1400px Breite) -> kleines JPEG
-      const small: string = await new Promise((resolve) => {
-        const im = new Image();
-        im.onload = () => {
-          const maxW = 1400; const scale = Math.min(1, maxW / im.width);
-          const c = document.createElement("canvas");
-          c.width = Math.round(im.width * scale); c.height = Math.round(im.height * scale);
-          const ctx = c.getContext("2d"); if (ctx) ctx.drawImage(im, 0, 0, c.width, c.height);
-          resolve(c.toDataURL("image/jpeg", 0.82));
-        };
-        im.onerror = () => resolve(dataUrl);
-        im.src = dataUrl;
-      });
+      const smalls = await Promise.all(arr.map(downscale));
       const r = await fetch("/api/immo-image", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ image: small, media_type: "image/jpeg" }),
+        body: JSON.stringify({ images: smalls, media_type: "image/jpeg" }),
       }).then(x => x.json());
       if (r.currency) setCur(r.currency);
       if (r.country === "CH") setLand("CH"); else if (r.country === "DE") setLand("DE");
       if (r.price) setPrice(String(r.price));
-      if (r.location) setLoc(String(r.location).slice(0, 60));
       if (r.size) setSize(String(r.size));
+      if (r.location) setLoc(String(r.location).slice(0, 60));
+      if (r.yearBuilt) setYearBuilt(String(r.yearBuilt));
+      if (r.heating) setHeating(String(r.heating));
+      if (r.energy) setEnergy(String(r.energy));
+      if (r.condition) setCondition(String(r.condition));
+      if (typeof r.pv === "boolean") setPv(r.pv);
+      const extras = [r.yearBuilt ? "Baujahr " + r.yearBuilt : "", r.heating || "", r.energy || "", r.pv ? "PV" : "", r.condition || ""].filter(Boolean).join(" - ");
       setLoadMsg(r.ok
-        ? `Aus Bild gelesen: ${fmt(r.price, r.currency || cur)}${r.size ? " - " + r.size + " m²" : ""}${r.location ? " - " + r.location : ""}`
+        ? `Aus ${arr.length} Bild(ern): ${fmt(r.price, r.currency || cur)}${r.size ? " - " + r.size + " m²" : ""}${r.location ? " - " + r.location : ""}${extras ? " | " + extras : ""}`
         : (r.warning || "Im Bild nichts erkannt."));
     } catch {
-      setLoadMsg("Bild konnte nicht ausgewertet werden.");
+      setLoadMsg("Bilder konnten nicht ausgewertet werden.");
     }
     setImgBusy(false);
   };
@@ -166,11 +180,24 @@ export default function Immobilien() {
       sz > 0 ? `Wohnflaeche: ${sz} m2` : "Wohnflaeche: unbekannt",
       ppsm > 0 ? `Preis pro m2: ${fmt(ppsm, cur)}` : "",
       `Eigenkapital: ${fmt(num(equity), cur)}`,
+      yearBuilt ? `Baujahr: ${yearBuilt}` : "",
+      heating ? `Heizung: ${heating}` : "",
+      energy ? `Energie/Effizienz: ${energy}` : "",
+      `Photovoltaik: ${pv ? "vorhanden" : "keine/unbekannt"}`,
+      condition ? `Zustand: ${condition}` : "",
+      `Zweck: ${purpose === "invest" ? "Investment / Vermietung" : "Eigennutzung"}`,
     ];
+    if (purpose === "invest" && num(rent) > 0) {
+      const yld = (num(rent) * 12) / p * 100;
+      facts.push(`Erwartete Kaltmiete/Monat: ${fmt(num(rent), cur)} -> Bruttomietrendite ca. ${yld.toFixed(1)}%`);
+    }
     if (land === "DE" || land === "VS") facts.push(`DE-Finanzierung: Kaufnebenkosten ${fmt(de.neben, "EUR")}, Gesamtkosten ${fmt(de.gesamt, "EUR")}, Darlehen ${fmt(de.darlehen, "EUR")}, Monatsrate ${fmt(de.rate, "EUR")}, Beleihung ${de.beleihung.toFixed(0)}%`);
     if (land === "CH" || land === "VS") facts.push(`CH-Finanzierung: Mindest-EK ${fmt(ch.minEK, "CHF")} (vorhanden: ${ch.ekOK ? "ja" : "nein"}), Belehnung ${ch.belehnung.toFixed(0)}%, Tragbarkeit ${ch.quote.toFixed(0)}% (Grenze 33%), kalk. Kosten/Jahr ${fmt(ch.kostenJahr, "CHF")}`);
-    const system = "Du bist ein nuechterner, erfahrener Immobilien- und Finanzberater fuer den Raum DACH. Bewerte ehrlich und ohne Verkaufssprache. Erfinde KEINE exakten Marktpreise - wenn du den lokalen Markt nicht sicher kennst, sage das offen und ordne nur grob ein. Antworte auf Deutsch, kompakt, mit Markdown-Ueberschriften und kurzen Stichpunkten.";
-    const user = `Bewerte diese Immobilie anhand der Daten:\n\n${facts.filter(Boolean).join("\n")}\n\nGib mir:\n## Preis-Einordnung (ist der Preis pro m2 fuer die Lage eher guenstig, fair oder teuer? mit Unsicherheitshinweis)\n## Pro\n## Contra / Risiken\n## Finanzielle Tragbarkeit (anhand der Zahlen oben)\n## Fazit (1-2 Saetze: lohnt es sich eher, eher nicht, oder wovon haengt es ab)`;
+    const system = "Du bist ein nuechterner, erfahrener Immobilien- und Finanzberater fuer den Raum DACH. Bewerte ehrlich und ohne Verkaufssprache. Erfinde KEINE exakten Marktpreise - wenn du den lokalen Markt nicht sicher kennst, sage das offen und ordne nur grob ein. Beruecksichtige Energieeffizienz/Heizung (kuenftige Heiz- und CO2-Kosten, in DE z.B. GEG/Heizungstausch-Risiko), Baujahr und Renovierungs-/Sanierungsbedarf. Antworte auf Deutsch, kompakt, mit Markdown-Ueberschriften und kurzen Stichpunkten.";
+    const investAsk = purpose === "invest"
+      ? "## Investment-Sicht (Mietrendite einordnen, Vermietbarkeit/Nachfrage der Lage, laufende Kosten, Sanierungs- & Energiekosten-Risiko, Wertsteigerungspotenzial)\n"
+      : "## Wohn- & Kostensicht (Wohnqualitaet, Energie-/Heizkosten, Sanierungsbedarf, langfristige Kosten)\n";
+    const user = `Bewerte diese Immobilie anhand der Daten:\n\n${facts.filter(Boolean).join("\n")}\n\nGib mir:\n## Preis-Einordnung (ist der Preis pro m2 fuer die Lage eher guenstig, fair oder teuer? mit Unsicherheitshinweis)\n## Energie, Heizung & Zustand (Bewertung von Effizienz, Heizungsart, PV, Baujahr, Renovierungsbedarf)\n${investAsk}## Pro\n## Contra / Risiken\n## Finanzielle Tragbarkeit (anhand der Zahlen oben)\n## Fazit (1-2 Saetze: lohnt es sich eher, eher nicht, oder wovon haengt es ab)`;
     try {
       const r = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ system, messages: [{ role: "user", content: user }] }) }).then(x => x.json());
       setOpinion(r.text || r.error || "Keine Antwort erhalten.");
@@ -240,9 +267,10 @@ export default function Immobilien() {
           <button className="btn" onClick={loadInserat} disabled={loading || !link.trim()}>{loading ? "Lade..." : "Laden"}</button>
         </div>
         <label className={`btn-ghost rounded-xl px-4 py-2 text-sm cursor-pointer inline-flex items-center gap-2 w-fit ${imgBusy ? "opacity-60 pointer-events-none" : ""}`}>
-          {imgBusy ? "Lese Bild…" : "📷 Screenshot/Foto auswerten"}
-          <input type="file" accept="image/*" className="hidden" onChange={e => onImage(e.target.files?.[0])} />
+          {imgBusy ? "Lese Bilder…" : "📷 Screenshots/Fotos auswerten (mehrere möglich)"}
+          <input type="file" accept="image/*" multiple className="hidden" onChange={e => onImages(e.target.files)} />
         </label>
+        <div className="text-[11px] text-muted -mt-1">Tipp: Exposé, Energieausweis und Fotos zusammen hochladen — je mehr, desto besser erkennt die KI Heizung, Energie, Baujahr & Zustand.</div>
         {loadMsg && <div className="text-xs text-muted">{loadMsg}</div>}
         <div className="text-[11px] text-muted">Viele Portale blockieren automatische Zugriffe. Klappt der Link nicht, nutze „Text einfügen" — das funktioniert immer.</div>
         <button onClick={() => setShowPaste(v => !v)} className="text-[11px] text-mint hover:underline text-left">{showPaste ? "Texteingabe ausblenden" : "Stattdessen Inseratstext einfügen"}</button>
@@ -367,12 +395,39 @@ export default function Immobilien() {
         )}
       </div>
 
+      {/* Objektdaten & Zweck */}
+      <div className="card p-6 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="font-semibold display">Objektdaten & Zweck</div>
+          <div className="inline-flex p-0.5 rounded-xl bg-panel2/60 border border-line">
+            {([["eigennutzung", "Eigennutzung"], ["invest", "Investment / Vermietung"]] as ["eigennutzung" | "invest", string][]).map(([id, lbl]) => (
+              <button key={id} onClick={() => setPurpose(id)} className="px-3 py-1 rounded-lg text-xs font-semibold transition" style={purpose === id ? { background: "#5EEAD4", color: "#04201B" } : { color: "#8794B0" }}>{lbl}</button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <Field label="Baujahr"><input className="input num" value={yearBuilt} onChange={e => setYearBuilt(e.target.value)} placeholder="z.B. 1998" /></Field>
+          <Field label="Heizung"><input className="input" value={heating} onChange={e => setHeating(e.target.value)} placeholder="z.B. Wärmepumpe, Gas" /></Field>
+          <Field label="Energie / Effizienz"><input className="input" value={energy} onChange={e => setEnergy(e.target.value)} placeholder="z.B. Klasse C, 110 kWh" /></Field>
+          <Field label="Zustand"><input className="input" value={condition} onChange={e => setCondition(e.target.value)} placeholder="z.B. gepflegt, renovierungsbedürftig" /></Field>
+          <Field label="Photovoltaik">
+            <button onClick={() => setPv(!pv)} className="chip w-full" style={pv ? { borderColor: "#5EEAD4", color: "#fff", background: "#5EEAD41f" } : {}}>{pv ? "☀ PV vorhanden" : "Keine / unbekannt"}</button>
+          </Field>
+          {purpose === "invest" && (
+            <Field label="Erwartete Kaltmiete / Monat">
+              <input className="input num" value={rent} onChange={e => setRent(e.target.value)} placeholder={`${cur} / Monat`} />
+              {num(rent) > 0 && num(price) > 0 && <div className="text-[10px] text-muted mt-1 num">Bruttomietrendite ca. {((num(rent) * 12) / num(price) * 100).toFixed(1)}%</div>}
+            </Field>
+          )}
+        </div>
+      </div>
+
       {/* KI-Einschaetzung */}
       <div className="card card-hl p-6 space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <div className="font-semibold display">Lohnt sich das? — Zweitmeinung</div>
-            <div className="text-xs text-muted">Ehrliche Einordnung zu Preis, Pro/Contra & Tragbarkeit auf Basis deiner Eingaben.</div>
+            <div className="text-xs text-muted">Ehrliche Einordnung zu Preis, Energie/Heizung/Zustand, Pro/Contra & Tragbarkeit — abgestimmt auf {purpose === "invest" ? "Vermietung/Investment" : "Eigennutzung"}.</div>
           </div>
           <button className="btn" onClick={getOpinion} disabled={opBusy || !(num(price) > 0)}>{opBusy ? "Analysiere…" : "Einschätzung holen"}</button>
         </div>
