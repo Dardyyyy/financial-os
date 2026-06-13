@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Currency, Goal, Asset, fmt, convertCur, getFxMap, loadSettings, loadGoals, saveGoals, loadAssets, saveAssets, uid, parseAmount } from "../lib/store";
+import { Currency, Goal, Asset, BudgetData, fmt, convertCur, getFxMap, loadSettings, loadGoals, saveGoals, loadAssets, saveAssets, loadBudget, uid, parseAmount } from "../lib/store";
 import CurrencySelect from "./CurrencySelect";
 import Markdown from "./Markdown";
 
@@ -37,6 +37,7 @@ export default function Immobilien() {
   const [pv, setPv] = useState(false);
   const [purpose, setPurpose] = useState<"eigennutzung" | "invest">("eigennutzung");
   const [rent, setRent] = useState("");
+  const [budget, setBudget] = useState<BudgetData | null>(null);
 
   const [land, setLand] = useState<Land>("VS");
   const [price, setPrice] = useState("750000");
@@ -54,9 +55,12 @@ export default function Immobilien() {
   const [chNebenPct, setChNebenPct] = useState("1.0");
   const [chZins, setChZins] = useState("2.0");
 
-  useEffect(() => { getFxMap(["EUR", "CHF", "USD"]).then(setFxMap); loadSettings().then(s => setCur(s.mainCurrency)); }, []);
+  useEffect(() => { getFxMap(["EUR", "CHF", "USD"]).then(setFxMap); loadSettings().then(s => setCur(s.mainCurrency)); loadBudget().then(setBudget); }, []);
 
   const conv = (n: number, to: Currency) => convertCur(n, cur, to, fxMap);
+  const bc = (budget?.currency || "CHF") as Currency; // Budget-Waehrung
+  const freeMonthly = budget ? budget.income - budget.fixed.reduce((x, f) => x + f.amount, 0) - budget.oneTime.reduce((x, o) => x + o.amount, 0) / 12 : 0;
+  const toBC = (n: number, from: Currency) => convertCur(n, from, bc, fxMap);
 
   const loadInserat = async () => {
     if (!link.trim()) return;
@@ -191,13 +195,21 @@ export default function Immobilien() {
       const yld = (num(rent) * 12) / p * 100;
       facts.push(`Erwartete Kaltmiete/Monat: ${fmt(num(rent), cur)} -> Bruttomietrendite ca. ${yld.toFixed(1)}%`);
     }
+    let budgetAsk = "";
+    if (budget && budget.income > 0) {
+      const burden = toBC(land === "DE" ? burdenDE : burdenCH, land === "DE" ? "EUR" : "CHF");
+      const rem = freeMonthly - burden;
+      facts.push(`Dein frei verfuegbares Einkommen/Monat (aus Budget): ${fmt(freeMonthly, bc)}`);
+      facts.push(`Geschaetzte monatliche Belastung der Immobilie: ${fmt(burden, bc)} -> danach verbleibend ${fmt(rem, bc)}`);
+      budgetAsk = "## Auswirkung auf dein Budget (konkretes Beispiel mit diesen Zahlen: monatliche Belastung vs. frei verfuegbares Einkommen, was bleibt uebrig, wie eng wird es, Puffer fuer Unerwartetes)\n";
+    }
     if (land === "DE" || land === "VS") facts.push(`DE-Finanzierung: Kaufnebenkosten ${fmt(de.neben, "EUR")}, Gesamtkosten ${fmt(de.gesamt, "EUR")}, Darlehen ${fmt(de.darlehen, "EUR")}, Monatsrate ${fmt(de.rate, "EUR")}, Beleihung ${de.beleihung.toFixed(0)}%`);
     if (land === "CH" || land === "VS") facts.push(`CH-Finanzierung: Mindest-EK ${fmt(ch.minEK, "CHF")} (vorhanden: ${ch.ekOK ? "ja" : "nein"}), Belehnung ${ch.belehnung.toFixed(0)}%, Tragbarkeit ${ch.quote.toFixed(0)}% (Grenze 33%), kalk. Kosten/Jahr ${fmt(ch.kostenJahr, "CHF")}`);
-    const system = "Du bist ein nuechterner, erfahrener Immobilien- und Finanzberater fuer den Raum DACH. Bewerte ehrlich und ohne Verkaufssprache. Erfinde KEINE exakten Marktpreise - wenn du den lokalen Markt nicht sicher kennst, sage das offen und ordne nur grob ein. Beruecksichtige Energieeffizienz/Heizung (kuenftige Heiz- und CO2-Kosten, in DE z.B. GEG/Heizungstausch-Risiko), Baujahr und Renovierungs-/Sanierungsbedarf. Antworte auf Deutsch, kompakt, mit Markdown-Ueberschriften und kurzen Stichpunkten.";
+    const system = "Du bist ein nuechterner, erfahrener Immobilien- und Finanzberater fuer den Raum DACH. Bewerte ehrlich und ohne Verkaufssprache. Erfinde KEINE exakten Marktpreise - wenn du den lokalen Markt nicht sicher kennst, sage das offen und ordne nur grob ein. Beruecksichtige Energieeffizienz/Heizung (kuenftige Heiz- und CO2-Kosten, in DE z.B. GEG/Heizungstausch-Risiko), Baujahr und Renovierungs-/Sanierungsbedarf. Antworte auf Deutsch, kompakt. Halte jeden Abschnitt knapp: 2-4 kurze Stichpunkte, keine langen Saetze. Nutze Markdown-Ueberschriften (##) und Stichpunkte.";
     const investAsk = purpose === "invest"
       ? "## Investment-Sicht (Mietrendite einordnen, Vermietbarkeit/Nachfrage der Lage, laufende Kosten, Sanierungs- & Energiekosten-Risiko, Wertsteigerungspotenzial)\n"
       : "## Wohn- & Kostensicht (Wohnqualitaet, Energie-/Heizkosten, Sanierungsbedarf, langfristige Kosten)\n";
-    const user = `Bewerte diese Immobilie anhand der Daten:\n\n${facts.filter(Boolean).join("\n")}\n\nGib mir:\n## Preis-Einordnung (ist der Preis pro m2 fuer die Lage eher guenstig, fair oder teuer? mit Unsicherheitshinweis)\n## Energie, Heizung & Zustand (Bewertung von Effizienz, Heizungsart, PV, Baujahr, Renovierungsbedarf)\n${investAsk}## Pro\n## Contra / Risiken\n## Finanzielle Tragbarkeit (anhand der Zahlen oben)\n## Fazit (1-2 Saetze: lohnt es sich eher, eher nicht, oder wovon haengt es ab)`;
+    const user = `Bewerte diese Immobilie anhand der Daten:\n\n${facts.filter(Boolean).join("\n")}\n\nGib mir:\n## Preis-Einordnung (ist der Preis pro m2 fuer die Lage eher guenstig, fair oder teuer? mit Unsicherheitshinweis)\n## Energie, Heizung & Zustand (Bewertung von Effizienz, Heizungsart, PV, Baujahr, Renovierungsbedarf)\n${investAsk}${budgetAsk}## Pro\n## Contra / Risiken\n## Finanzielle Tragbarkeit (anhand der Zahlen oben)\n## Fazit (1-2 Saetze: lohnt es sich eher, eher nicht, oder wovon haengt es ab)`;
     try {
       const r = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ system, messages: [{ role: "user", content: user }] }) }).then(x => x.json());
       setOpinion(r.text || r.error || "Keine Antwort erhalten.");
@@ -256,6 +268,9 @@ export default function Immobilien() {
     const zinsMonat = hypothek * num(chZins) / 100 / 12;
     return { p, ek, minEK, hypothek, belehnung, hyp1, hyp2, amortJahr, neben, kalkZins, unterhalt, kostenJahr, quote, zinsMonat, ekOK: ek >= minEK, tragbar: inc > 0 && quote <= 33.34 };
   }, [price, equity, income, cur, fxMap, chNebenPct, chZins]);
+
+  const burdenDE = de.rate + de.p * 0.01 / 12;                          // Rate + grobe Instandhaltung (EUR)
+  const burdenCH = ch.zinsMonat + ch.amortJahr / 12 + ch.unterhalt / 12; // Zins + Amortisation + Unterhalt (CHF)
 
   return (
     <div className="space-y-5">
@@ -395,6 +410,19 @@ export default function Immobilien() {
         )}
       </div>
 
+      {/* Auswirkung auf dein Budget */}
+      {budget && budget.income > 0 && (
+        <div className="card p-6 space-y-3">
+          <div className="font-semibold display">Auswirkung auf dein Budget</div>
+          <div className="text-xs text-muted">Aus deinem Budget-Tab: {fmt(freeMonthly, bc)} frei verfügbar pro Monat.</div>
+          <div className="space-y-2">
+            {(land === "DE" || land === "VS") && <BudgetRow label="🇩🇪 Monatliche Belastung" burden={toBC(burdenDE, "EUR")} free={freeMonthly} bc={bc} />}
+            {(land === "CH" || land === "VS") && <BudgetRow label="🇨🇭 Monatliche Belastung" burden={toBC(burdenCH, "CHF")} free={freeMonthly} bc={bc} />}
+          </div>
+          <div className="text-[10px] text-muted">Belastung = Finanzierungsrate inkl. grober Instandhaltung. Frei verfügbar = Einkommen − Fixkosten − anteilige Einmalkosten.</div>
+        </div>
+      )}
+
       {/* Objektdaten & Zweck */}
       <div className="card p-6 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -442,6 +470,24 @@ export default function Immobilien() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><div className="text-[11px] text-muted mb-1">{label}</div>{children}</div>;
+}
+function BudgetRow({ label, burden, free, bc }: { label: string; burden: number; free: number; bc: Currency }) {
+  const rem = free - burden;
+  const pct = free > 0 ? Math.min(100, Math.round(burden / free * 100)) : 100;
+  const good = rem >= 0;
+  return (
+    <div className="rounded-xl bg-panel2/50 border border-line p-3">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted">{label}</span>
+        <span className="num font-semibold" style={{ color: good ? "#5EEAD4" : "#FB7185" }}>{fmt(burden, bc)}/Mt</span>
+      </div>
+      <div className="h-2 rounded-full bg-black/30 overflow-hidden mt-2"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: good ? "linear-gradient(90deg,#5EEAD4,#F5B544)" : "#FB7185" }} /></div>
+      <div className="flex items-center justify-between text-[11px] mt-1.5">
+        <span className="text-muted num">{pct}% deines frei verfügbaren Einkommens</span>
+        <span className="num" style={{ color: good ? "#5EEAD4" : "#FB7185" }}>{good ? "bleibt " + fmt(rem, bc) : "Defizit " + fmt(Math.abs(rem), bc)}</span>
+      </div>
+    </div>
+  );
 }
 function Cell({ label, val, tone, wide }: { label: string; val: string; tone?: "gold" | "mint" | "bad"; wide?: boolean }) {
   const c = tone === "gold" ? "#F5B544" : tone === "mint" ? "#5EEAD4" : tone === "bad" ? "#FB7185" : "#E7ECF5";

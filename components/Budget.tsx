@@ -134,7 +134,7 @@ export default function Budget() {
           <div className="space-y-2">
             {data.fixed.map(f => (
               <div key={f.id} className="flex items-center justify-between gap-2 border-b border-line/40 pb-2">
-                <span className="text-sm flex-1 min-w-0 break-words">{f.name}</span>
+                <span className="text-sm flex-1 min-w-0 whitespace-normal break-normal">{f.name}</span>
                 <div className="flex items-center gap-2 shrink-0">
                   <input className="input num w-24 text-right py-1.5" defaultValue={f.amount} onBlur={e => editFixed(f.id, parseAmount(e.target.value))} />
                   <span className="text-xs text-muted">{sym}</span>
@@ -158,7 +158,7 @@ export default function Budget() {
           <div className="space-y-2">
             {[...data.oneTime].sort((a, b) => a.month - b.month).map(o => (
               <div key={o.id} className="flex items-center justify-between gap-2 border-b border-line/40 pb-2">
-                <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap"><span className="text-sm break-words">{o.name}</span> <span className="text-[10px] text-gold border border-gold/40 rounded px-1 num shrink-0">{MONTHS[o.month - 1]}</span></div>
+                <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap"><span className="text-sm whitespace-normal break-normal">{o.name}</span> <span className="text-[10px] text-gold border border-gold/40 rounded px-1 num shrink-0">{MONTHS[o.month - 1]}</span></div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="num text-sm">{e(o.amount)}</span>
                   <button onClick={() => rmOne(o.id)} className="x-btn">✕</button>

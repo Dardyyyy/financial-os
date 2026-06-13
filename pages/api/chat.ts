@@ -37,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1500,
+        max_tokens: 2600,
         system: system || undefined,
         messages,
       }),
