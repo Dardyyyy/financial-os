@@ -145,7 +145,7 @@ export default function Budget() {
             {data.fixed.length === 0 && <div className="text-muted text-sm">Noch keine Fixkosten.</div>}
           </div>
           <div className="flex gap-2">
-            <input className="input" placeholder="z.B. Fitnessstudio" value={fName} onChange={e => setFName(e.target.value)} />
+            <input className="input flex-1 min-w-0" placeholder="z.B. Fitnessstudio" value={fName} onChange={e => setFName(e.target.value)} />
             <input className="input num w-28" placeholder={`${sym}/Monat`} value={fAmt} onChange={e => setFAmt(e.target.value)} onKeyDown={e => e.key === "Enter" && addFixed()} />
             <button className="btn-ghost px-4 rounded-xl" onClick={addFixed}>+</button>
           </div>
