@@ -57,6 +57,7 @@ export default function Immobilien() {
   const [kanton, setKanton] = useState("Aargau");
   const [chNebenPct, setChNebenPct] = useState("1.0");
   const [chZins, setChZins] = useState("2.0");
+  const [chUnterhalt, setChUnterhalt] = useState("1.0");
 
   useEffect(() => { getFxMap(["EUR", "CHF", "USD"]).then(setFxMap); loadSettings().then(s => setCur(s.mainCurrency)); loadBudget().then(setBudget); }, []);
 
@@ -207,7 +208,7 @@ export default function Immobilien() {
       budgetAsk = "## Auswirkung auf dein Budget (konkretes Beispiel mit diesen Zahlen: monatliche Belastung vs. frei verfuegbares Einkommen, was bleibt uebrig, wie eng wird es, Puffer fuer Unerwartetes)\n";
     }
     if (land === "DE" || land === "VS") facts.push(`DE-Finanzierung: Kaufnebenkosten ${fmt(de.neben, "EUR")}, Gesamtkosten ${fmt(de.gesamt, "EUR")}, Darlehen ${fmt(de.darlehen, "EUR")}, Monatsrate ${fmt(de.rate, "EUR")}, Beleihung ${de.beleihung.toFixed(0)}%, Volltilgung ca. ${de.payoffJahre === Infinity ? ">40" : de.payoffJahre.toFixed(0)} Jahre, Restschuld nach ${de.zb} J. Zinsbindung ${fmt(de.restZinsbindung, "EUR")}`);
-    if (land === "CH" || land === "VS") facts.push(`CH-Finanzierung: Mindest-EK ${fmt(ch.minEK, "CHF")} (vorhanden: ${ch.ekOK ? "ja" : "nein"}), Belehnung ${ch.belehnung.toFixed(0)}%, Tragbarkeit ${ch.quote.toFixed(0)}% (Grenze 33%), kalk. Kosten/Jahr ${fmt(ch.kostenJahr, "CHF")}`);
+    if (land === "CH" || land === "VS") facts.push(`CH-Finanzierung: Mindest-EK ${fmt(ch.minEK, "CHF")} (vorhanden: ${ch.ekOK ? "ja" : "nein"}), Belehnung ${ch.belehnung.toFixed(0)}% (${ch.belehnungOK ? "ok" : "zu hoch"}), tatsaechliche Kosten/Monat ${fmt(ch.mTotal, "CHF")} (Zins ${fmt(ch.mZins, "CHF")} + Unterhalt ${fmt(ch.mUnterhalt, "CHF")} + Amortisation ${fmt(ch.mAmort, "CHF")}), Tragbarkeit kalkulatorisch ${ch.quote.toFixed(0)}% (Grenze 33%), noetiges Einkommen ~${fmt(ch.minIncome, "CHF")}`);
     const system = "Du bist ein nuechterner, erfahrener Immobilien- und Finanzberater fuer den Raum DACH. Bewerte ehrlich und ohne Verkaufssprache. Erfinde KEINE exakten Marktpreise - wenn du den lokalen Markt nicht sicher kennst, sage das offen und ordne nur grob ein. Beruecksichtige Energieeffizienz/Heizung (kuenftige Heiz- und CO2-Kosten, in DE z.B. GEG/Heizungstausch-Risiko), Baujahr und Renovierungs-/Sanierungsbedarf. Antworte auf Deutsch, kompakt. Halte jeden Abschnitt knapp: 2-4 kurze Stichpunkte, keine langen Saetze. Nutze Markdown-Ueberschriften (##) und Stichpunkte.";
     const investAsk = purpose === "invest"
       ? "## Investment-Sicht (Mietrendite einordnen, Vermietbarkeit/Nachfrage der Lage, laufende Kosten, Sanierungs- & Energiekosten-Risiko, Wertsteigerungspotenzial)\n"
@@ -280,19 +281,25 @@ export default function Immobilien() {
     const hypothek = Math.max(0, p - ek);
     const belehnung = p > 0 ? hypothek / p * 100 : 0;
     const hyp1 = Math.min(hypothek, p * 2 / 3);
-    const hyp2 = Math.max(0, hypothek - p * 2 / 3);
-    const amortJahr = hyp2 / 15;
-    const neben = p * num(chNebenPct) / 100;
+    const hyp2 = Math.max(0, hypothek - p * 2 / 3);   // Teil ueber 2/3 -> muss amortisiert werden
+    const amortJahr = hyp2 / 15;                       // in 15 Jahren auf 2/3 (ZKB-Grundsatz)
+    const neben = p * num(chNebenPct) / 100;           // einmalige Kaufnebenkosten
+    // Tragbarkeit (kalkulatorisch 5%)
     const kalkZins = hypothek * 0.05;
-    const unterhalt = p * 0.01;
+    const unterhalt = p * num(chUnterhalt) / 100;      // 0.7-1% (einstellbar)
     const kostenJahr = kalkZins + unterhalt + amortJahr;
     const quote = inc > 0 ? kostenJahr / inc * 100 : 0;
-    const zinsMonat = hypothek * num(chZins) / 100 / 12;
-    return { p, ek, minEK, hypothek, belehnung, hyp1, hyp2, amortJahr, neben, kalkZins, unterhalt, kostenJahr, quote, zinsMonat, ekOK: ek >= minEK, tragbar: inc > 0 && quote <= 33.34 };
-  }, [price, equity, income, cur, fxMap, chNebenPct, chZins]);
+    const minIncome = kostenJahr * 3;                  // Einkommen, damit Tragbarkeit ~33%
+    // Tatsaechliche Kosten pro Monat (echter Zins)
+    const mZins = hypothek * num(chZins) / 100 / 12;
+    const mUnterhalt = unterhalt / 12;
+    const mAmort = amortJahr / 12;
+    const mTotal = mZins + mUnterhalt + mAmort;
+    return { p, ek, minEK, hypothek, belehnung, hyp1, hyp2, amortJahr, neben, kalkZins, unterhalt, kostenJahr, quote, minIncome, mZins, mUnterhalt, mAmort, mTotal, ekOK: ek >= minEK, belehnungOK: belehnung <= 80.01, tragbar: inc > 0 && quote <= 33.34 };
+  }, [price, equity, income, cur, fxMap, chNebenPct, chZins, chUnterhalt]);
 
   const burdenDE = de.rate + de.p * 0.01 / 12;                          // Rate + grobe Instandhaltung (EUR)
-  const burdenCH = ch.zinsMonat + ch.amortJahr / 12 + ch.unterhalt / 12; // Zins + Amortisation + Unterhalt (CHF)
+  const burdenCH = ch.mTotal; // tatsaechliche Monatskosten (CHF)
 
   return (
     <div className="space-y-5">
@@ -383,6 +390,7 @@ export default function Immobilien() {
             </Field>
             <Field label="Kaufnebenkosten % (ca.)"><input className="input num" value={chNebenPct} onChange={e => setChNebenPct(e.target.value)} /></Field>
             <Field label="Hypothekarzins %"><input className="input num" value={chZins} onChange={e => setChZins(e.target.value)} /></Field>
+            <Field label="Unterhalt % p.a."><input className="input num" value={chUnterhalt} onChange={e => setChUnterhalt(e.target.value)} /></Field>
           </div>
         </div>
       )}
@@ -425,18 +433,28 @@ export default function Immobilien() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Cell label="Mind. Eigenkapital (20%)" val={fmt(ch.minEK, "CHF")} tone={ch.ekOK ? "mint" : "bad"} />
-              <Cell label="Hypothek" val={fmt(ch.hypothek, "CHF")} />
+              <Cell label={`Belehnung ${ch.belehnung.toFixed(0)}%`} val={ch.belehnungOK ? "OK (≤80%)" : "zu hoch"} tone={ch.belehnungOK ? "mint" : "bad"} />
               <Cell label="1. Hypothek (bis 66%)" val={fmt(ch.hyp1, "CHF")} />
               <Cell label="2. Hypothek (amort.)" val={fmt(ch.hyp2, "CHF")} />
-              <Cell label="Amortisation / Jahr" val={fmt(ch.amortJahr, "CHF")} />
-              <Cell label="Kaufnebenkosten" val={fmt(ch.neben, "CHF")} tone="bad" />
-              <Cell label="Zinskosten / Monat" val={fmt(ch.zinsMonat, "CHF")} tone="gold" />
-              <Cell label="Kalk. Kosten / Jahr" val={fmt(ch.kostenJahr, "CHF")} wide />
+              <Cell label="Kaufnebenkosten (einmalig)" val={fmt(ch.neben, "CHF")} tone="bad" />
+              <Cell label="Min. Einkommen (Tragbarkeit)" val={fmt(ch.minIncome, "CHF")} tone={ch.tragbar ? "mint" : "bad"} />
             </div>
+
+            {/* Tatsaechliche Kosten pro Monat (ZKB-Stil) */}
+            <div className="rounded-xl bg-panel2/50 border border-line p-4 mt-1">
+              <div className="text-xs text-muted mb-2">Tatsächliche Kosten pro Monat</div>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between"><span className="text-muted">Zins ({chZins}%)</span><span className="num">{fmt(ch.mZins, "CHF")}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Unterhalt ({chUnterhalt}%)</span><span className="num">{fmt(ch.mUnterhalt, "CHF")}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Amortisation</span><span className="num">{fmt(ch.mAmort, "CHF")}</span></div>
+                <div className="flex justify-between border-t border-line pt-1.5 mt-1.5 font-semibold"><span>Total / Monat</span><span className="num text-gold">{fmt(ch.mTotal, "CHF")}</span></div>
+              </div>
+            </div>
+
             {!ch.ekOK && <div className="text-[11px] text-bad">⚠ Mindestens 20% Eigenkapital nötig (davon ≥10% nicht aus der Pensionskasse).</div>}
-            {ch.ekOK && !ch.tragbar && <div className="text-[11px] text-bad">⚠ Tragbarkeit über 33% — Banken rechnen mit kalkulatorisch 5% Zins + 1% Unterhalt + Amortisation.</div>}
-            {ch.ekOK && ch.tragbar && <div className="text-[11px] text-mint">✓ Tragbarkeit erfüllt (Faustregel ≤ 33% des Bruttoeinkommens).</div>}
-            <div className="text-[10px] text-muted">Kalk. Kosten = 5% kalkulatorischer Zins auf die Hypothek + 1% Unterhalt + Amortisation der 2. Hypothek.</div>
+            {ch.ekOK && !ch.tragbar && <div className="text-[11px] text-bad">⚠ Tragbarkeit über 33% (kalkulatorisch {ch.quote.toFixed(0)}%) — Bank rechnet mit ~5% Zins + Unterhalt + Amortisation. Nötiges Einkommen: ~{fmt(ch.minIncome, "CHF")}.</div>}
+            {ch.ekOK && ch.tragbar && <div className="text-[11px] text-mint">✓ Tragbarkeit erfüllt — kalkulatorisch {ch.quote.toFixed(0)}% (Grenze 33% des Bruttoeinkommens).</div>}
+            <div className="text-[10px] text-muted">Tatsächliche Kosten = echter Hypothekarzins + Unterhalt + Amortisation der 2. Hypothek (auf 2/3 in 15 J.). Die Tragbarkeit prüft die Bank mit kalkulatorisch ~5% Zins.</div>
             <div className="flex gap-2 pt-1">
               <button className="chip flex-1" onClick={() => goalFrom("CH")}>🎯 Als Sparziel</button>
               <button className="chip flex-1" onClick={() => assetFrom("CH")}>🏠 In Vermögen</button>
