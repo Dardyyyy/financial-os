@@ -50,6 +50,9 @@ export default function Immobilien() {
   const [maklerPct, setMaklerPct] = useState("3.57");
   const [deZins, setDeZins] = useState("3.5");
   const [deTilgung, setDeTilgung] = useState("2.0");
+  const [deMode, setDeMode] = useState<"tilgung" | "laufzeit">("tilgung");
+  const [deLaufzeit, setDeLaufzeit] = useState("30");
+  const [deZinsbindung, setDeZinsbindung] = useState("10");
 
   const [kanton, setKanton] = useState("Aargau");
   const [chNebenPct, setChNebenPct] = useState("1.0");
@@ -203,7 +206,7 @@ export default function Immobilien() {
       facts.push(`Geschaetzte monatliche Belastung der Immobilie: ${fmt(burden, bc)} -> danach verbleibend ${fmt(rem, bc)}`);
       budgetAsk = "## Auswirkung auf dein Budget (konkretes Beispiel mit diesen Zahlen: monatliche Belastung vs. frei verfuegbares Einkommen, was bleibt uebrig, wie eng wird es, Puffer fuer Unerwartetes)\n";
     }
-    if (land === "DE" || land === "VS") facts.push(`DE-Finanzierung: Kaufnebenkosten ${fmt(de.neben, "EUR")}, Gesamtkosten ${fmt(de.gesamt, "EUR")}, Darlehen ${fmt(de.darlehen, "EUR")}, Monatsrate ${fmt(de.rate, "EUR")}, Beleihung ${de.beleihung.toFixed(0)}%`);
+    if (land === "DE" || land === "VS") facts.push(`DE-Finanzierung: Kaufnebenkosten ${fmt(de.neben, "EUR")}, Gesamtkosten ${fmt(de.gesamt, "EUR")}, Darlehen ${fmt(de.darlehen, "EUR")}, Monatsrate ${fmt(de.rate, "EUR")}, Beleihung ${de.beleihung.toFixed(0)}%, Volltilgung ca. ${de.payoffJahre === Infinity ? ">40" : de.payoffJahre.toFixed(0)} Jahre, Restschuld nach ${de.zb} J. Zinsbindung ${fmt(de.restZinsbindung, "EUR")}`);
     if (land === "CH" || land === "VS") facts.push(`CH-Finanzierung: Mindest-EK ${fmt(ch.minEK, "CHF")} (vorhanden: ${ch.ekOK ? "ja" : "nein"}), Belehnung ${ch.belehnung.toFixed(0)}%, Tragbarkeit ${ch.quote.toFixed(0)}% (Grenze 33%), kalk. Kosten/Jahr ${fmt(ch.kostenJahr, "CHF")}`);
     const system = "Du bist ein nuechterner, erfahrener Immobilien- und Finanzberater fuer den Raum DACH. Bewerte ehrlich und ohne Verkaufssprache. Erfinde KEINE exakten Marktpreise - wenn du den lokalen Markt nicht sicher kennst, sage das offen und ordne nur grob ein. Beruecksichtige Energieeffizienz/Heizung (kuenftige Heiz- und CO2-Kosten, in DE z.B. GEG/Heizungstausch-Risiko), Baujahr und Renovierungs-/Sanierungsbedarf. Antworte auf Deutsch, kompakt. Halte jeden Abschnitt knapp: 2-4 kurze Stichpunkte, keine langen Saetze. Nutze Markdown-Ueberschriften (##) und Stichpunkte.";
     const investAsk = purpose === "invest"
@@ -245,10 +248,29 @@ export default function Immobilien() {
     const neben = grest + notar + grundbuch + makler;
     const gesamt = p + neben;
     const darlehen = Math.max(0, gesamt - ek);
-    const rate = darlehen * (num(deZins) + num(deTilgung)) / 100 / 12;
+    const i = num(deZins) / 100 / 12;
+    let rate: number;
+    if (deMode === "laufzeit") {
+      const n = Math.max(1, num(deLaufzeit) * 12);
+      rate = i > 0 ? darlehen * i / (1 - Math.pow(1 + i, -n)) : darlehen / n;   // Annuitaet fuer Volltilgung in n Monaten
+    } else {
+      rate = darlehen * (num(deZins) + num(deTilgung)) / 100 / 12;              // Zins + anf. Tilgung
+    }
+    const simBalance = (months: number) => {
+      let bal = darlehen;
+      for (let k = 0; k < months && bal > 0.005; k++) { const int = bal * i; let pr = rate - int; if (pr < 0) pr = 0; if (pr > bal) pr = bal; bal -= pr; }
+      return bal;
+    };
+    // Volltilgungsdauer in Monaten
+    let payoff = 0;
+    if (rate > darlehen * i + 0.001) { let bal = darlehen; while (bal > 0.005 && payoff < 1200) { const int = bal * i; let pr = rate - int; if (pr > bal) pr = bal; bal -= pr; payoff++; } }
+    else payoff = Infinity;
+    const zb = Math.max(1, num(deZinsbindung));
+    const restZinsbindung = simBalance(zb * 12);
+    const impliedTilgung = darlehen > 0 ? (rate * 12 - darlehen * num(deZins) / 100) / darlehen * 100 : 0;
     const beleihung = p > 0 ? darlehen / p * 100 : 0;
-    return { p, ek, grest, notar, grundbuch, makler, neben, gesamt, darlehen, rate, beleihung, ekDeckt: ek >= neben };
-  }, [price, equity, cur, fxMap, grestPct, maklerPct, deZins, deTilgung]);
+    return { p, ek, grest, notar, grundbuch, makler, neben, gesamt, darlehen, rate, beleihung, ekDeckt: ek >= neben, payoffJahre: payoff === Infinity ? Infinity : payoff / 12, restZinsbindung, zb, impliedTilgung };
+  }, [price, equity, cur, fxMap, grestPct, maklerPct, deZins, deTilgung, deMode, deLaufzeit, deZinsbindung]);
 
   const ch = useMemo(() => {
     const p = conv(num(price), "CHF");
@@ -324,7 +346,14 @@ export default function Immobilien() {
       {/* DE Parameter */}
       {(land === "DE" || land === "VS") && (
         <div className="card p-5 space-y-3">
-          <div className="font-semibold text-sm" style={{ color: "#F5B544" }}>Deutschland — Parameter</div>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="font-semibold text-sm" style={{ color: "#F5B544" }}>Deutschland — Parameter</div>
+            <div className="inline-flex p-0.5 rounded-xl bg-panel2/60 border border-line">
+              {([["tilgung", "über Tilgung %"], ["laufzeit", "über Laufzeit"]] as ["tilgung" | "laufzeit", string][]).map(([id, lbl]) => (
+                <button key={id} onClick={() => setDeMode(id)} className="px-2.5 py-1 rounded-lg text-xs font-semibold transition" style={deMode === id ? { background: "#F5B544", color: "#0B1020" } : { color: "#8794B0" }}>{lbl}</button>
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Field label="Bundesland">
               <select className="input" value={bundesland} onChange={e => setBl(e.target.value)}>
@@ -334,7 +363,10 @@ export default function Immobilien() {
             <Field label="Grunderwerbst. %"><input className="input num" value={grestPct} onChange={e => setGrestPct(e.target.value)} /></Field>
             <Field label="Makler %"><input className="input num" value={maklerPct} onChange={e => setMaklerPct(e.target.value)} /></Field>
             <Field label="Sollzins %"><input className="input num" value={deZins} onChange={e => setDeZins(e.target.value)} /></Field>
-            <Field label="Tilgung %"><input className="input num" value={deTilgung} onChange={e => setDeTilgung(e.target.value)} /></Field>
+            {deMode === "tilgung"
+              ? <Field label="Anf. Tilgung %"><input className="input num" value={deTilgung} onChange={e => setDeTilgung(e.target.value)} /></Field>
+              : <Field label="Laufzeit (Jahre, Volltilgung)"><input className="input num" value={deLaufzeit} onChange={e => setDeLaufzeit(e.target.value)} /></Field>}
+            <Field label="Zinsbindung (Jahre)"><input className="input num" value={deZinsbindung} onChange={e => setDeZinsbindung(e.target.value)} /></Field>
           </div>
         </div>
       )}
@@ -371,10 +403,13 @@ export default function Immobilien() {
               <Cell label="Kaufnebenkosten" val={fmt(de.neben, "EUR")} tone="bad" />
               <Cell label="Gesamtkosten" val={fmt(de.gesamt, "EUR")} />
               <Cell label="Darlehen" val={fmt(de.darlehen, "EUR")} />
-              <Cell label="Monatsrate (Zins+Tilgung)" val={fmt(de.rate, "EUR")} tone="gold" wide />
+              <Cell label="Monatsrate" val={fmt(de.rate, "EUR")} tone="gold" />
+              <Cell label="Volltilgung nach" val={de.payoffJahre === Infinity ? "> 40 J. (zu niedrig)" : `ca. ${de.payoffJahre.toFixed(0)} Jahre`} />
+              <Cell label={`Restschuld nach ${de.zb} J. Zinsbindung`} val={fmt(de.restZinsbindung, "EUR")} tone="bad" wide />
             </div>
             {!de.ekDeckt && <div className="text-[11px] text-bad">⚠ Dein Eigenkapital deckt die Kaufnebenkosten nicht — deutsche Banken finanzieren diese i. d. R. nicht mit.</div>}
             <div className="text-[10px] text-muted">Nebenkosten = Grunderwerbsteuer ({grestPct}%) + Notar/Grundbuch (2,0%) + Makler ({maklerPct}%).</div>
+            <div className="text-[10px] text-muted">{deMode === "laufzeit" ? `Rate für Volltilgung in ${num(deLaufzeit)} Jahren (entspricht ~${de.impliedTilgung.toFixed(1)}% Anfangstilgung).` : `Anf. Tilgung ${num(deTilgung)}% → Volltilgung wie oben. Nach der Zinsbindung folgt eine Anschlussfinanzierung zum dann gültigen Zins.`}</div>
             <div className="flex gap-2 pt-1">
               <button className="chip flex-1" onClick={() => goalFrom("DE")}>🎯 Als Sparziel</button>
               <button className="chip flex-1" onClick={() => assetFrom("DE")}>🏠 In Vermögen</button>
